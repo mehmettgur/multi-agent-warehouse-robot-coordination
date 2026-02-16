@@ -1,98 +1,114 @@
 # Multi-Agent Warehouse Robot Coordination
 
-Deterministic 2D grid warehouse simulation for multi-agent task allocation and collision-free path planning.
+2D grid depo ortaminda coklu robot koordinasyonu simulasyonu.
 
-## Features
-- Agent-based architecture:
+## Plan Dosyalari
+- `PLAN.md`: Ilk MVP plani.
+- `PLAN2.MD`: Ablation + gelismis koordinasyon + benchmark/UI genisletme plani.
+
+## Ozellikler
+- Ajan mimarisi:
   - `RobotAgent`
-  - `TaskAllocatorAgent` (greedy ETA)
-  - `TrafficManagerAgent` (reservation table + prioritized planning)
-  - `CoordinatorAgent` (tick loop + metrics)
-- A* pathfinding with Manhattan heuristic and `WAIT` action.
-- Coordinated mode with `vertex-time` + `edge-time` collision constraints.
-- Deadlock-break priority scheme in coordinated mode:
-  - wait-streak aware ordering
-  - tick-based priority rotation
-  - blocker-aware tie handling
-- Baseline mode (independent no-reservation planning) for comparison.
-- Scenario-driven experiments (JSON config).
-- Metrics and reproducible runs with fixed seed.
-- Minimal Streamlit dashboard.
+  - `TaskAllocatorAgent` (`greedy`, `hungarian`)
+  - `TrafficManagerAgent` (prioritized planning + reservation table)
+  - `CoordinatorAgent` (tick dongusu, local micro-replan, metrik toplama)
+- Planner secenekleri:
+  - `astar`
+  - `dijkstra`
+  - `weighted_astar` (`w` ayarlanabilir)
+- Coordinated mod:
+  - vertex-time + edge-time rezervasyon
+  - local conflict resolver + deterministic fallback
+- Olay motoru:
+  - `temp_block`
+  - `stochastic_delay`
+- Benchmark senaryolari (6 adet):
+  - `narrow_corridor_swap`
+  - `intersection_4way_crossing`
+  - `bottleneck_shelves`
+  - `high_load_6r_30t`
+  - `dynamic_obstacle`
+  - `stochastic_delay`
+- Akademik metrikler:
+  - makespan, throughput, fairness, congestion heatmap
+  - planner diagnostics (expanded nodes, planning time, path cost)
 
-## Project Structure
-- `src/warehouse_sim/`: simulator source code
-- `configs/scenarios/`: scenario JSON files
-- `tests/`: unit and integration tests
-- `app/dashboard.py`: web demo UI
-- `results/`: generated run outputs
+## Gereksinimler
+- Python `>=3.10`
 
-## Setup
-Python requirement: `3.10+`
+## Kurulum
+### Windows PowerShell
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -e .[dev,ui]
+```
 
+### macOS / Linux
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .[dev,ui]
 ```
 
-## Run Single Mode
+Not: Paket editable kurulmazsa komutlara `PYTHONPATH=src` prefix ekleyin.
+
+## CLI Kullanim
+### Tek kosum
 ```bash
-python3 -m warehouse_sim.runner \
-  --scenario configs/scenarios/narrow_corridor.json \
+python -m warehouse_sim.runner \
+  --scenario configs/scenarios/narrow_corridor_swap.json \
   --mode coordinated \
-  --seed 7
+  --planner astar \
+  --allocator hungarian \
+  --seed 17
 ```
 
-## Run Baseline vs Coordinated Comparison
+### Baseline vs Coordinated kiyas
 ```bash
-python3 -m warehouse_sim.runner \
-  --scenario configs/scenarios/narrow_corridor.json \
-  --seed 7 \
-  --compare
+python -m warehouse_sim.runner \
+  --scenario configs/scenarios/narrow_corridor_swap.json \
+  --compare \
+  --planner weighted_astar \
+  --heuristic-weight 1.4 \
+  --allocator hungarian \
+  --seed 17
 ```
 
-This generates:
-- `results/narrow_corridor_comparison.json`
-- `results/narrow_corridor_comparison.csv`
-
-## Run Tests
+### Ablation matrix
 ```bash
-pytest
+python -m warehouse_sim.runner \
+  --ablation \
+  --scenarios configs/scenarios/narrow_corridor_swap.json configs/scenarios/intersection_4way_crossing.json \
+  --output-dir results
 ```
 
-## Dashboard
+Uretilen ciktilar:
+- `results/*_comparison.json`, `results/*_comparison.csv`
+- `results/ablation_*.json`, `results/ablation_*.csv`
+
+## Web UI
 ```bash
 streamlit run app/dashboard.py
 ```
 
-Dashboard includes:
-- Scenario selection
-- Run Type selection (`Single Run` / `Baseline vs Coordinated`)
-- Seed and max-ticks overrides
-- Clean simulation summary cards (instead of raw JSON output)
-- Aciklayici metrik kartlari ve metrik anlam rehberi
-- Daha iyi gorsel grid replay (renkli robotlar, iz/trail, adim kontrol tuslari)
-- Baseline vs coordinated karsilastirma kartlari ve delta gorunumu
-- In-app scenario JSON editing/validation (opsiyonel, expander icinde)
-- Edited scenario save to `configs/scenarios/`
+UI icerigi:
+- Scenario secimi
+- Single run / baseline vs coordinated secimi
+- Planner secimi + weighted A* slider
+- Allocator secimi
+- Replay hiz kontrolu
+- Heatmap overlay toggle
+- Ablation tablosu ve kayit
+- Opsiyonel JSON scenario editor (expander)
 
-## Core Metrics
-- `makespan`
-- `total_path_length`
-- `avg_task_completion_time`
-- `wait_count`
-- `collision_count`
-- `replanning_count`
+## Test
+```bash
+pytest
+```
 
-## Acceptance Targets
-- Coordinated mode: `collision_count == 0` in constrained scenarios.
-- Baseline and coordinated run on same scenario and output comparable metrics.
-- Same seed produces identical outputs.
+## Determinizm
+- Ayni senaryo + ayni seed + ayni mode/planner/allocator kombinasyonu ayni sonucu uretir.
 
-## Implemented Scenarios
-- `configs/scenarios/narrow_corridor.json`
-- `configs/scenarios/dense_tasks.json`
-
-## Notes
-- Dynamic uncertainty/replanning events are left as post-MVP extensions.
-- Current implementation focuses on deterministic educational MAPF coordination without heavy CBS-style solvers.
+## Not
+- Coordinated modda fiziksel carpisma metrigi `collision_count` hedefi 0'dir.

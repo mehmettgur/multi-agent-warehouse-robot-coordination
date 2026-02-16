@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import json
 from dataclasses import replace
+from datetime import datetime, timezone
 from html import escape
 from pathlib import Path
 import sys
@@ -15,7 +16,16 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from warehouse_sim.loader import load_scenario
-from warehouse_sim.models import MetricsReport, Mode, RobotSpec, RunResult, SimulationConfig, TaskSpec
+from warehouse_sim.models import (
+    AllocationPolicy,
+    Mode,
+    PlannerAlgorithm,
+    PlannerConfig,
+    RobotSpec,
+    RunResult,
+    SimulationConfig,
+    TaskSpec,
+)
 from warehouse_sim.simulator import run_simulation
 
 RESULTS_DIR = ROOT / "results"
@@ -33,11 +43,13 @@ ROBOT_COLORS = [
 
 METRIC_DOCS = {
     "makespan": "Tum gorevlerin tamamlanmasi icin gecen toplam tick. Dusuk olmasi daha iyi.",
-    "total_path_length": "Robotlarin toplam MOVE adim sayisi. Gereksiz hareketleri gosterir.",
-    "avg_task_completion_time": "Bir gorevin release anindan tamamlanmaya kadar ortalama suresi.",
-    "wait_count": "Robotlarin WAIT yaptigi toplam adim sayisi. Tikaniklik sinyali olabilir.",
-    "collision_count": "Ayni tickte tespit edilen cakisna olaylari. Coordinated modda hedef 0.",
-    "replanning_count": "Planlayicinin yeniden planlama tetikleme sayisi.",
+    "total_path_length": "Robotlarin toplam MOVE adim sayisi.",
+    "avg_task_completion_time": "Gorevlerin release->completion ortalama suresi.",
+    "wait_count": "Toplam WAIT adimi.",
+    "collision_count": "Cakisna olay sayisi. Coordinated hedefi 0.",
+    "throughput": "Birim zamanda tamamlanan gorev sayisi.",
+    "fairness_task_std": "Robotlar arasi gorev dagiliminin std sapmasi.",
+    "planner_expanded_nodes_total": "Planner tarafinda genisletilen toplam dugum.",
 }
 
 
@@ -76,6 +88,8 @@ def _inject_styles() -> None:
                 border: 1px solid #d9e3ef;
                 color: #334155;
                 background: #f8fafc;
+                position: relative;
+                overflow: hidden;
             }
             .sim-cell.obstacle { background: #374151; border-color: #374151; color: #f8fafc; }
             .sim-cell.pickup { background: #ecfeff; border-color: #22d3ee; color: #155e75; }
@@ -146,6 +160,11 @@ def _config_from_data(data: dict) -> SimulationConfig:
         )
         for task in data["tasks"]
     ]
+    planner_raw = data.get("planner", {})
+    planner = PlannerConfig(
+        algorithm=planner_raw.get("algorithm", "astar"),
+        heuristic_weight=float(planner_raw.get("heuristic_weight", 1.4)),
+    )
 
     return SimulationConfig(
         name=data["name"],
@@ -158,6 +177,8 @@ def _config_from_data(data: dict) -> SimulationConfig:
         tasks=tasks,
         max_ticks=data.get("simulation", {}).get("max_ticks", 200),
         events=data.get("events", []),
+        planner=planner,
+        allocator_policy=data.get("allocator_policy", "hungarian"),
     )
 
 
@@ -177,33 +198,6 @@ def _write_csv(path: Path, rows: list[dict]) -> None:
         writer.writerows(rows)
 
 
-def _persist_single(config_name: str, mode: Mode, result: RunResult) -> Path:
-    out = RESULTS_DIR / f"{config_name}_{mode}.json"
-    _write_json(out, result.to_dict())
-    return out
-
-
-def _persist_comparison(config_name: str, baseline: RunResult, coordinated: RunResult) -> tuple[Path, Path]:
-    json_out = RESULTS_DIR / f"{config_name}_comparison.json"
-    csv_out = RESULTS_DIR / f"{config_name}_comparison.csv"
-
-    payload = {
-        "scenario": config_name,
-        "seed": coordinated.seed,
-        "baseline": baseline.metrics.to_dict(),
-        "coordinated": coordinated.metrics.to_dict(),
-    }
-    _write_json(json_out, payload)
-    _write_csv(
-        csv_out,
-        [
-            {"mode": "baseline", **baseline.metrics.to_dict()},
-            {"mode": "coordinated", **coordinated.metrics.to_dict()},
-        ],
-    )
-    return json_out, csv_out
-
-
 def _format_ratio(completed: int, total: int) -> str:
     if total == 0:
         return "0/0"
@@ -211,7 +205,13 @@ def _format_ratio(completed: int, total: int) -> str:
     return f"{completed}/{total} (%{percent:.1f})"
 
 
-def _render_config_overview(config: SimulationConfig, run_type: str, mode: Mode) -> None:
+def _render_config_overview(
+    config: SimulationConfig,
+    run_type: str,
+    mode: Mode,
+    planner: PlannerConfig,
+    allocator: AllocationPolicy,
+) -> None:
     st.markdown('<div class="sim-panel">', unsafe_allow_html=True)
     st.markdown("### Senaryo Ozeti")
     c1, c2, c3, c4, c5 = st.columns(5)
@@ -220,98 +220,73 @@ def _render_config_overview(config: SimulationConfig, run_type: str, mode: Mode)
     c3.metric("Robot", str(len(config.robots)))
     c4.metric("Gorev", str(len(config.tasks)))
     c5.metric("Max Tick", str(config.max_ticks))
-    st.caption(f"Calisma tipi: {run_type} | Mod: {mode if run_type == 'Tek Kosum' else 'baseline + coordinated'} | Seed: {config.seed}")
+    st.caption(
+        " | ".join(
+            [
+                f"Calisma tipi: {run_type}",
+                f"Mod: {mode if run_type == 'Tek Kosum' else 'baseline + coordinated'}",
+                f"Planner: {planner.algorithm}",
+                f"w={planner.heuristic_weight}",
+                f"Allocator: {allocator}",
+                f"Seed: {config.seed}",
+            ]
+        )
+    )
     st.markdown("</div>", unsafe_allow_html=True)
 
 
-def _render_metric_cards(metrics: MetricsReport, title: str, key_prefix: str) -> None:
+def _render_metric_cards(metrics: dict, title: str) -> None:
     st.markdown(f"### {title}")
-    c1, c2, c3 = st.columns(3)
+    c1, c2, c3, c4 = st.columns(4)
     c1.metric(
         "Tamamlanan Gorev",
-        _format_ratio(metrics.completed_tasks, metrics.total_tasks),
-        help="Tamamlanan gorev sayisinin toplam goreve orani.",
+        _format_ratio(metrics["completed_tasks"], metrics["total_tasks"]),
     )
-    c2.metric(
-        "Makespan",
-        str(metrics.makespan),
-        help=METRIC_DOCS["makespan"],
-    )
-    c3.metric(
-        "Cakisma Sayisi",
-        str(metrics.collision_count),
-        help=METRIC_DOCS["collision_count"],
+    c2.metric("Cakisma", str(metrics["collision_count"]))
+    c3.metric("Makespan", str(metrics["makespan"]))
+    c4.metric("Throughput", str(metrics.get("throughput", 0.0)))
+
+    c5, c6, c7, c8 = st.columns(4)
+    c5.metric("Toplam Yol", str(metrics["total_path_length"]))
+    c6.metric("Ort. Gorev Suresi", str(metrics["avg_task_completion_time"]))
+    c7.metric("Bekleme", str(metrics["wait_count"]))
+    c8.metric("Fairness STD", str(metrics.get("fairness_task_std", 0.0)))
+
+    st.bar_chart(
+        {
+            "makespan": metrics["makespan"],
+            "path": metrics["total_path_length"],
+            "wait": metrics["wait_count"],
+            "expanded": metrics.get("planner_expanded_nodes_total", 0),
+        },
+        height=170,
     )
 
-    c4, c5, c6 = st.columns(3)
-    c4.metric(
-        "Toplam Yol",
-        str(metrics.total_path_length),
-        help=METRIC_DOCS["total_path_length"],
-    )
-    c5.metric(
-        "Ortalama Gorev Suresi",
-        str(metrics.avg_task_completion_time),
-        help=METRIC_DOCS["avg_task_completion_time"],
-    )
-    c6.metric(
-        "Bekleme / Replan",
-        f"{metrics.wait_count} / {metrics.replanning_count}",
-        help="Bekleme sayisi ve yeniden planlama sayisi birlikte gosterilir.",
-    )
 
-    chart_data = {
-        "makespan": metrics.makespan,
-        "total_path": metrics.total_path_length,
-        "wait": metrics.wait_count,
-        "collisions": metrics.collision_count,
-    }
-    st.caption(f"Operasyon ozet grafigi ({key_prefix})")
-    st.bar_chart(chart_data, height=170)
-
-
-def _render_comparison_cards(baseline: MetricsReport, coordinated: MetricsReport) -> None:
+def _render_comparison_cards(baseline: dict, coordinated: dict) -> None:
     st.markdown("### Kiyas Ozeti (Coordinated - Baseline)")
-    c1, c2, c3 = st.columns(3)
+    c1, c2, c3, c4 = st.columns(4)
     c1.metric(
         "Tamamlanan Gorev",
-        _format_ratio(coordinated.completed_tasks, coordinated.total_tasks),
-        delta=f"{coordinated.completed_tasks - baseline.completed_tasks:+}",
-        help="Pozitif delta coordinated modun daha fazla gorev bitirdigini gosterir.",
+        _format_ratio(coordinated["completed_tasks"], coordinated["total_tasks"]),
+        delta=f"{coordinated['completed_tasks'] - baseline['completed_tasks']:+}",
     )
     c2.metric(
         "Cakisma",
-        str(coordinated.collision_count),
-        delta=f"{coordinated.collision_count - baseline.collision_count:+}",
+        str(coordinated["collision_count"]),
+        delta=f"{coordinated['collision_count'] - baseline['collision_count']:+}",
         delta_color="inverse",
-        help="Negatif delta daha iyidir.",
     )
     c3.metric(
         "Makespan",
-        str(coordinated.makespan),
-        delta=f"{coordinated.makespan - baseline.makespan:+}",
+        str(coordinated["makespan"]),
+        delta=f"{coordinated['makespan'] - baseline['makespan']:+}",
         delta_color="inverse",
-        help="Negatif delta daha iyidir.",
     )
-
-    c4, c5, c6 = st.columns(3)
     c4.metric(
-        "Toplam Yol",
-        str(coordinated.total_path_length),
-        delta=f"{coordinated.total_path_length - baseline.total_path_length:+}",
-        delta_color="inverse",
-    )
-    c5.metric(
-        "Ortalama Gorev Suresi",
-        str(coordinated.avg_task_completion_time),
-        delta=f"{coordinated.avg_task_completion_time - baseline.avg_task_completion_time:+.3f}",
-        delta_color="inverse",
-    )
-    c6.metric(
-        "Bekleme",
-        str(coordinated.wait_count),
-        delta=f"{coordinated.wait_count - baseline.wait_count:+}",
-        delta_color="inverse",
+        "Throughput",
+        str(coordinated.get("throughput", 0.0)),
+        delta=f"{coordinated.get('throughput', 0.0) - baseline.get('throughput', 0.0):+.4f}",
     )
 
 
@@ -326,6 +301,17 @@ def _build_trail_map(timeline: list, tick_index: int, window: int = 6) -> dict[t
     return trail
 
 
+def _parse_heatmap(metrics: dict) -> dict[tuple[int, int], int]:
+    heat: dict[tuple[int, int], int] = {}
+    for key, value in metrics.get("congestion_heatmap", {}).items():
+        try:
+            x_str, y_str = key.split(",")
+            heat[(int(x_str), int(y_str))] = int(value)
+        except ValueError:
+            continue
+    return heat
+
+
 def _cell_base_class(config: SimulationConfig, x: int, y: int) -> str:
     if (x, y) in config.obstacles:
         return "obstacle"
@@ -336,31 +322,45 @@ def _cell_base_class(config: SimulationConfig, x: int, y: int) -> str:
     return ""
 
 
+def _heat_style(cell: tuple[int, int], heatmap: dict[tuple[int, int], int]) -> str:
+    if cell not in heatmap:
+        return ""
+    max_count = max(heatmap.values()) if heatmap else 1
+    alpha = min(0.45, (heatmap[cell] / max_count) * 0.45)
+    return f"box-shadow: inset 0 0 0 999px rgba(239, 68, 68, {alpha});"
+
+
 def _render_grid_html(
     config: SimulationConfig,
     snapshot: dict,
     robot_color_map: dict[str, str],
     trail_map: dict[tuple[int, int], int],
+    heatmap: dict[tuple[int, int], int],
+    show_heatmap: bool,
 ) -> str:
     position_to_robot = {
         (pos[0], pos[1]): rid for rid, pos in snapshot["robot_positions"].items()
     }
+    blocked_now = {tuple(cell) for cell in snapshot.get("blocked_cells", [])}
 
     cells: list[str] = []
     for y in range(config.height):
         for x in range(config.width):
             cls = _cell_base_class(config, x, y)
+            if (x, y) in blocked_now:
+                cls = "obstacle"
             trail_level = min(3, trail_map.get((x, y), 0))
             trail_cls = f"trail-{trail_level}" if trail_level > 0 and cls != "obstacle" else ""
             class_name = " ".join(part for part in ["sim-cell", cls, trail_cls] if part)
+
+            heat_style = _heat_style((x, y), heatmap) if show_heatmap and cls != "obstacle" else ""
+            style_attr = f" style='{heat_style}'" if heat_style else ""
 
             robot_id = position_to_robot.get((x, y))
             if robot_id is not None:
                 color = robot_color_map[robot_id]
                 label = escape(robot_id)
-                content = (
-                    f"<span class='robot-chip' style='background:{color};'>{label}</span>"
-                )
+                content = f"<span class='robot-chip' style='background:{color};'>{label}</span>"
             elif cls == "pickup":
                 content = "P"
             elif cls == "dropoff":
@@ -370,13 +370,12 @@ def _render_grid_html(
             else:
                 content = ""
 
-            cells.append(f"<div class='{class_name}'>{content}</div>")
+            cells.append(f"<div class='{class_name}'{style_attr}>{content}</div>")
 
-    grid_html = (
+    return (
         f"<div class='sim-grid-wrap'><div class='sim-grid' "
         f"style='grid-template-columns: repeat({config.width}, 32px);'>{''.join(cells)}</div></div>"
     )
-    return grid_html
 
 
 def _render_robot_legend(robot_ids: list[str], robot_color_map: dict[str, str]) -> None:
@@ -392,7 +391,7 @@ def _render_robot_legend(robot_ids: list[str], robot_color_map: dict[str, str]) 
     st.markdown("".join(parts), unsafe_allow_html=True)
 
 
-def _replay_controls(key_prefix: str, timeline_len: int) -> int:
+def _replay_controls(key_prefix: str, timeline_len: int, step_size: int) -> int:
     max_tick = timeline_len - 1
     state_key = f"{key_prefix}_tick"
     if state_key not in st.session_state:
@@ -402,9 +401,9 @@ def _replay_controls(key_prefix: str, timeline_len: int) -> int:
     if c1.button("|<", key=f"{key_prefix}_first"):
         st.session_state[state_key] = 0
     if c2.button("<", key=f"{key_prefix}_prev"):
-        st.session_state[state_key] = max(0, st.session_state[state_key] - 1)
+        st.session_state[state_key] = max(0, st.session_state[state_key] - step_size)
     if c4.button(">", key=f"{key_prefix}_next"):
-        st.session_state[state_key] = min(max_tick, st.session_state[state_key] + 1)
+        st.session_state[state_key] = min(max_tick, st.session_state[state_key] + step_size)
     if c5.button(">|", key=f"{key_prefix}_last"):
         st.session_state[state_key] = max_tick
 
@@ -421,13 +420,24 @@ def _replay_controls(key_prefix: str, timeline_len: int) -> int:
     return slider_tick
 
 
-def _render_replay(result: RunResult, config: SimulationConfig, key_prefix: str, title: str) -> None:
+def _render_replay(
+    result: RunResult,
+    config: SimulationConfig,
+    key_prefix: str,
+    title: str,
+    show_heatmap: bool,
+    step_size: int,
+) -> None:
     st.markdown(f"### {title}")
     if not result.timeline:
         st.info("Timeline olusmadi.")
         return
 
-    tick_index = _replay_controls(key_prefix=key_prefix, timeline_len=len(result.timeline))
+    tick_index = _replay_controls(
+        key_prefix=key_prefix,
+        timeline_len=len(result.timeline),
+        step_size=step_size,
+    )
     snapshot = result.timeline[tick_index].to_dict()
 
     robot_ids = sorted(snapshot["robot_positions"].keys())
@@ -436,10 +446,11 @@ def _render_replay(result: RunResult, config: SimulationConfig, key_prefix: str,
     }
 
     trail_map = _build_trail_map(result.timeline, tick_index=tick_index)
+    heatmap = _parse_heatmap(result.metrics.to_dict())
 
     st.caption(
         f"Tick {snapshot['tick']} | Tamamlanan Gorev: {snapshot['completed_tasks']} | "
-        f"Bu tick cakisna olayi: {snapshot['collision_events']}"
+        f"Bu tick cakisna: {snapshot['collision_events']}"
     )
     st.markdown(
         _render_grid_html(
@@ -447,6 +458,8 @@ def _render_replay(result: RunResult, config: SimulationConfig, key_prefix: str,
             snapshot=snapshot,
             robot_color_map=robot_color_map,
             trail_map=trail_map,
+            heatmap=heatmap,
+            show_heatmap=show_heatmap,
         ),
         unsafe_allow_html=True,
     )
@@ -454,17 +467,65 @@ def _render_replay(result: RunResult, config: SimulationConfig, key_prefix: str,
 
 
 def _render_metric_guide() -> None:
-    with st.expander("Metrikler ne anlama geliyor?", expanded=True):
-        st.markdown(
-            "\n".join(
-                [f"- `{metric}`: {desc}" for metric, desc in METRIC_DOCS.items()]
-            )
-        )
+    with st.expander("Metrikler ne anlama geliyor?", expanded=False):
+        st.markdown("\n".join([f"- `{k}`: {v}" for k, v in METRIC_DOCS.items()]))
+
+
+def _save_result_files(prefix: str, payload: dict, rows: list[dict] | None = None) -> list[str]:
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    json_path = RESULTS_DIR / f"{prefix}_{timestamp}.json"
+    _write_json(json_path, payload)
+    saved = [str(json_path)]
+
+    if rows:
+        csv_path = RESULTS_DIR / f"{prefix}_{timestamp}.csv"
+        _write_csv(csv_path, rows)
+        saved.append(str(csv_path))
+
+    return saved
+
+
+def _run_ablation(
+    scenario_paths: list[str],
+    seed_override: int | None,
+    planners: list[PlannerConfig],
+    allocators: list[AllocationPolicy],
+    modes: list[Mode],
+) -> list[dict]:
+    rows: list[dict] = []
+
+    for scenario_path in scenario_paths:
+        config = load_scenario(scenario_path)
+        use_seed = config.seed if seed_override is None else seed_override
+
+        for planner in planners:
+            for allocator in allocators:
+                for mode in modes:
+                    result = run_simulation(
+                        config=config,
+                        mode=mode,
+                        seed=use_seed,
+                        planner_override=planner,
+                        allocator_override=allocator,
+                    )
+                    rows.append(
+                        {
+                            "scenario": config.name,
+                            "scenario_file": Path(scenario_path).name,
+                            "seed": use_seed,
+                            "mode": mode,
+                            "planner": planner.algorithm,
+                            "heuristic_weight": planner.heuristic_weight,
+                            "allocator": allocator,
+                            **result.metrics.to_dict(),
+                        }
+                    )
+    return rows
 
 
 def _show_editor(selected_path: Path) -> None:
     st.subheader("Scenario Editor (Opsiyonel)")
-    st.caption("JSON duzenleme ihtiyacin varsa bu bolumu ac. Normal kullanimda dokunmana gerek yok.")
+    st.caption("Sadece ileri duzey ihtiyaclar icin.")
 
     with st.expander("JSON Duzenleyici", expanded=False):
         st.text_area(
@@ -509,7 +570,7 @@ def main() -> None:
     _inject_styles()
 
     st.title("Multi-Agent Depo Robot Koordinasyonu")
-    st.caption("Daha temiz gorunum, aciklayici metrik paneli ve gorsel grid replay")
+    st.caption("Planner/allocator ablation + gelismis replay + heatmap overlay")
 
     scenario_paths = sorted(SCENARIO_DIR.glob("*.json"))
     if not scenario_paths:
@@ -526,19 +587,24 @@ def main() -> None:
         st.session_state["scenario_json_text"] = json.dumps(base_data, indent=2)
 
     run_type = st.sidebar.radio("Run Type", ["Tek Kosum", "Baseline vs Coordinated"], index=1)
-
     mode: Mode = "coordinated"
     if run_type == "Tek Kosum":
         mode = st.sidebar.selectbox("Mode", ["coordinated", "baseline"])
 
-    seed = int(
-        st.sidebar.number_input(
-            "Seed",
-            min_value=0,
-            value=int(base_data.get("seed", 0)),
-            step=1,
-        )
+    planner_algorithm: PlannerAlgorithm = st.sidebar.selectbox(
+        "Planner",
+        ["astar", "dijkstra", "weighted_astar"],
     )
+    heuristic_weight = 1.0
+    if planner_algorithm == "weighted_astar":
+        heuristic_weight = st.sidebar.slider("Weighted A* w", 1.0, 3.0, 1.4, 0.1)
+
+    allocator_policy: AllocationPolicy = st.sidebar.selectbox(
+        "Allocator",
+        ["hungarian", "greedy"],
+    )
+
+    seed = int(st.sidebar.number_input("Seed", min_value=0, value=int(base_data.get("seed", 0)), step=1))
     max_ticks = int(
         st.sidebar.number_input(
             "Max Ticks",
@@ -548,9 +614,16 @@ def main() -> None:
         )
     )
 
+    playback_speed = int(st.sidebar.slider("Playback speed", min_value=1, max_value=5, value=2, step=1))
+    show_heatmap = st.sidebar.checkbox("Heatmap overlay", value=True)
     use_editor = st.sidebar.checkbox("Editor JSON'u kullan", value=False)
     persist_results = st.sidebar.checkbox("Sonuclari results/ altina kaydet", value=True)
     run_clicked = st.sidebar.button("Simulasyonu Baslat", type="primary")
+
+    planner_cfg = PlannerConfig(
+        algorithm=planner_algorithm,
+        heuristic_weight=heuristic_weight,
+    )
 
     if run_clicked:
         try:
@@ -559,41 +632,98 @@ def main() -> None:
                 config = _config_from_data(scenario_data)
             else:
                 config = load_scenario(selected_path)
-            config = replace(config, seed=seed, max_ticks=max_ticks)
+            config = replace(
+                config,
+                seed=seed,
+                max_ticks=max_ticks,
+                planner=planner_cfg,
+                allocator_policy=allocator_policy,
+            )
 
             payload: dict = {
                 "config": config,
                 "run_type": run_type,
                 "mode": mode,
+                "planner": planner_cfg,
+                "allocator": allocator_policy,
                 "single": None,
                 "baseline": None,
                 "coordinated": None,
                 "saved_files": [],
             }
 
-            scenario_slug = config.name.lower().replace(" ", "_")
             if run_type == "Tek Kosum":
-                result = run_simulation(config=config, mode=mode, seed=config.seed)
+                result = run_simulation(
+                    config=config,
+                    mode=mode,
+                    seed=config.seed,
+                    planner_override=planner_cfg,
+                    allocator_override=allocator_policy,
+                )
                 payload["single"] = result
                 if persist_results:
-                    out = _persist_single(scenario_slug, mode, result)
-                    payload["saved_files"] = [str(out)]
+                    saved = _save_result_files(
+                        prefix=f"single_{config.name.lower().replace(' ', '_')}",
+                        payload=result.to_dict(),
+                    )
+                    payload["saved_files"] = saved
             else:
-                baseline = run_simulation(config=config, mode="baseline", seed=config.seed)
-                coordinated = run_simulation(config=config, mode="coordinated", seed=config.seed)
+                baseline = run_simulation(
+                    config=config,
+                    mode="baseline",
+                    seed=config.seed,
+                    planner_override=planner_cfg,
+                    allocator_override=allocator_policy,
+                )
+                coordinated = run_simulation(
+                    config=config,
+                    mode="coordinated",
+                    seed=config.seed,
+                    planner_override=planner_cfg,
+                    allocator_override=allocator_policy,
+                )
                 payload["baseline"] = baseline
                 payload["coordinated"] = coordinated
+
                 if persist_results:
-                    json_out, csv_out = _persist_comparison(scenario_slug, baseline, coordinated)
-                    payload["saved_files"] = [str(json_out), str(csv_out)]
+                    rows = [
+                        {
+                            "mode": "baseline",
+                            "planner": planner_cfg.algorithm,
+                            "heuristic_weight": planner_cfg.heuristic_weight,
+                            "allocator": allocator_policy,
+                            **baseline.metrics.to_dict(),
+                        },
+                        {
+                            "mode": "coordinated",
+                            "planner": planner_cfg.algorithm,
+                            "heuristic_weight": planner_cfg.heuristic_weight,
+                            "allocator": allocator_policy,
+                            **coordinated.metrics.to_dict(),
+                        },
+                    ]
+                    saved = _save_result_files(
+                        prefix=f"comparison_{config.name.lower().replace(' ', '_')}",
+                        payload={
+                            "scenario": config.name,
+                            "seed": config.seed,
+                            "planner": planner_cfg.algorithm,
+                            "heuristic_weight": planner_cfg.heuristic_weight,
+                            "allocator": allocator_policy,
+                            "baseline": baseline.metrics.to_dict(),
+                            "coordinated": coordinated.metrics.to_dict(),
+                        },
+                        rows=rows,
+                    )
+                    payload["saved_files"] = saved
 
             st.session_state["last_run_payload"] = payload
         except Exception as exc:  # noqa: BLE001
             st.error(f"Calistirma hatasi: {exc}")
 
-    left_tab, right_tab = st.tabs(["Simulation", "Scenario Editor"])
+    sim_tab, ablation_tab, editor_tab = st.tabs(["Simulation", "Ablation", "Scenario Editor"])
 
-    with left_tab:
+    with sim_tab:
         payload = st.session_state.get("last_run_payload")
         if payload is None:
             st.info("Soldan ayarlari secip 'Simulasyonu Baslat' butonuna tikla.")
@@ -601,41 +731,131 @@ def main() -> None:
             config: SimulationConfig = payload["config"]
             run_type_payload = payload["run_type"]
             mode_payload: Mode = payload["mode"]
+            planner_payload: PlannerConfig = payload["planner"]
+            allocator_payload: AllocationPolicy = payload["allocator"]
 
-            _render_config_overview(config, run_type_payload, mode_payload)
+            _render_config_overview(
+                config=config,
+                run_type=run_type_payload,
+                mode=mode_payload,
+                planner=planner_payload,
+                allocator=allocator_payload,
+            )
             _render_metric_guide()
 
             if run_type_payload == "Tek Kosum":
                 result: RunResult = payload["single"]
-                _render_metric_cards(result.metrics, f"Metrikler ({mode_payload})", "single")
+                _render_metric_cards(result.metrics.to_dict(), f"Metrikler ({mode_payload})")
                 _render_replay(
-                    result,
-                    config,
+                    result=result,
+                    config=config,
                     key_prefix=f"single_{mode_payload}",
                     title="Robot Hareket Replay",
+                    show_heatmap=show_heatmap,
+                    step_size=playback_speed,
                 )
             else:
                 baseline: RunResult = payload["baseline"]
                 coordinated: RunResult = payload["coordinated"]
 
-                _render_comparison_cards(baseline.metrics, coordinated.metrics)
+                _render_comparison_cards(
+                    baseline=baseline.metrics.to_dict(),
+                    coordinated=coordinated.metrics.to_dict(),
+                )
+
                 c1, c2 = st.columns(2)
                 with c1:
-                    _render_metric_cards(baseline.metrics, "Baseline Metrikleri", "baseline")
-                    _render_replay(baseline, config, key_prefix="baseline", title="Baseline Replay")
-                with c2:
-                    _render_metric_cards(coordinated.metrics, "Coordinated Metrikleri", "coordinated")
+                    _render_metric_cards(baseline.metrics.to_dict(), "Baseline Metrikleri")
                     _render_replay(
-                        coordinated,
-                        config,
+                        result=baseline,
+                        config=config,
+                        key_prefix="baseline",
+                        title="Baseline Replay",
+                        show_heatmap=show_heatmap,
+                        step_size=playback_speed,
+                    )
+                with c2:
+                    _render_metric_cards(coordinated.metrics.to_dict(), "Coordinated Metrikleri")
+                    _render_replay(
+                        result=coordinated,
+                        config=config,
                         key_prefix="coordinated",
                         title="Coordinated Replay",
+                        show_heatmap=show_heatmap,
+                        step_size=playback_speed,
                     )
 
             for path in payload.get("saved_files", []):
                 st.caption(f"Kaydedildi: {path}")
 
-    with right_tab:
+    with ablation_tab:
+        st.subheader("Ablation Study")
+        st.caption("scenario x mode x planner x allocator kombinasyonlarini calistirir.")
+
+        ab_scenarios = st.multiselect(
+            "Scenarios",
+            [str(path) for path in scenario_paths],
+            default=[str(selected_path)],
+        )
+        ab_planners = st.multiselect(
+            "Planners",
+            ["astar", "dijkstra", "weighted_astar"],
+            default=["astar", "dijkstra", "weighted_astar"],
+        )
+        ab_allocators = st.multiselect(
+            "Allocators",
+            ["greedy", "hungarian"],
+            default=["greedy", "hungarian"],
+        )
+        ab_modes = st.multiselect(
+            "Modes",
+            ["baseline", "coordinated"],
+            default=["baseline", "coordinated"],
+        )
+
+        ab_weight = st.slider("Weighted A* w (ablation)", 1.0, 3.0, 1.4, 0.1)
+        run_ablation_clicked = st.button("Ablation Calistir")
+
+        if run_ablation_clicked:
+            planners: list[PlannerConfig] = []
+            for name in ab_planners:
+                if name == "weighted_astar":
+                    planners.append(PlannerConfig(algorithm=name, heuristic_weight=ab_weight))
+                else:
+                    planners.append(PlannerConfig(algorithm=name, heuristic_weight=1.0))
+
+            rows = _run_ablation(
+                scenario_paths=ab_scenarios,
+                seed_override=seed,
+                planners=planners,
+                allocators=ab_allocators,
+                modes=ab_modes,
+            )
+            st.session_state["ablation_rows"] = rows
+
+            saved = _save_result_files(
+                prefix="ablation_ui",
+                payload={"rows": rows, "num_rows": len(rows)},
+                rows=rows,
+            )
+            st.session_state["ablation_saved"] = saved
+
+        rows = st.session_state.get("ablation_rows")
+        if rows:
+            st.dataframe(rows, width="stretch")
+            st.bar_chart(
+                {
+                    "avg_makespan": sum(float(r["makespan"]) for r in rows) / max(1, len(rows)),
+                    "avg_collision": sum(float(r["collision_count"]) for r in rows) / max(1, len(rows)),
+                    "avg_throughput": sum(float(r.get("throughput", 0.0)) for r in rows) / max(1, len(rows)),
+                },
+                height=190,
+            )
+
+            for path in st.session_state.get("ablation_saved", []):
+                st.caption(f"Ablation kaydi: {path}")
+
+    with editor_tab:
         _show_editor(selected_path)
 
 

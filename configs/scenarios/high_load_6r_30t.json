@@ -1,0 +1,626 @@
+{
+  "name": "high_load_6r_30t",
+  "seed": 29,
+  "planner": {
+    "algorithm": "astar",
+    "heuristic_weight": 1.0
+  },
+  "allocator_policy": "hungarian",
+  "grid": {
+    "width": 16,
+    "height": 10,
+    "obstacles": [
+      [
+        4,
+        1
+      ],
+      [
+        4,
+        3
+      ],
+      [
+        4,
+        4
+      ],
+      [
+        4,
+        6
+      ],
+      [
+        4,
+        8
+      ],
+      [
+        6,
+        1
+      ],
+      [
+        6,
+        3
+      ],
+      [
+        6,
+        4
+      ],
+      [
+        6,
+        6
+      ],
+      [
+        6,
+        8
+      ],
+      [
+        8,
+        1
+      ],
+      [
+        8,
+        3
+      ],
+      [
+        8,
+        4
+      ],
+      [
+        8,
+        6
+      ],
+      [
+        8,
+        8
+      ],
+      [
+        10,
+        1
+      ],
+      [
+        10,
+        3
+      ],
+      [
+        10,
+        4
+      ],
+      [
+        10,
+        6
+      ],
+      [
+        10,
+        8
+      ],
+      [
+        12,
+        1
+      ],
+      [
+        12,
+        3
+      ],
+      [
+        12,
+        4
+      ],
+      [
+        12,
+        6
+      ],
+      [
+        12,
+        8
+      ]
+    ]
+  },
+  "stations": {
+    "pickups": [
+      [
+        1,
+        1
+      ],
+      [
+        14,
+        1
+      ],
+      [
+        1,
+        8
+      ],
+      [
+        14,
+        8
+      ],
+      [
+        2,
+        5
+      ],
+      [
+        13,
+        5
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        15,
+        0
+      ],
+      [
+        0,
+        9
+      ],
+      [
+        15,
+        9
+      ],
+      [
+        3,
+        2
+      ],
+      [
+        11,
+        7
+      ]
+    ],
+    "dropoffs": [
+      [
+        1,
+        1
+      ],
+      [
+        14,
+        1
+      ],
+      [
+        1,
+        8
+      ],
+      [
+        14,
+        8
+      ],
+      [
+        2,
+        5
+      ],
+      [
+        13,
+        5
+      ],
+      [
+        0,
+        0
+      ],
+      [
+        15,
+        0
+      ],
+      [
+        0,
+        9
+      ],
+      [
+        15,
+        9
+      ],
+      [
+        3,
+        2
+      ],
+      [
+        11,
+        7
+      ]
+    ]
+  },
+  "robots": [
+    {
+      "id": "R1",
+      "start": [
+        0,
+        9
+      ]
+    },
+    {
+      "id": "R2",
+      "start": [
+        2,
+        9
+      ]
+    },
+    {
+      "id": "R3",
+      "start": [
+        5,
+        9
+      ]
+    },
+    {
+      "id": "R4",
+      "start": [
+        9,
+        9
+      ]
+    },
+    {
+      "id": "R5",
+      "start": [
+        12,
+        9
+      ]
+    },
+    {
+      "id": "R6",
+      "start": [
+        15,
+        9
+      ]
+    }
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "pickup": [
+        1,
+        1
+      ],
+      "dropoff": [
+        13,
+        5
+      ],
+      "release_tick": 0
+    },
+    {
+      "id": "T2",
+      "pickup": [
+        14,
+        1
+      ],
+      "dropoff": [
+        0,
+        9
+      ],
+      "release_tick": 0
+    },
+    {
+      "id": "T3",
+      "pickup": [
+        1,
+        8
+      ],
+      "dropoff": [
+        11,
+        7
+      ],
+      "release_tick": 1
+    },
+    {
+      "id": "T4",
+      "pickup": [
+        14,
+        8
+      ],
+      "dropoff": [
+        1,
+        8
+      ],
+      "release_tick": 1
+    },
+    {
+      "id": "T5",
+      "pickup": [
+        2,
+        5
+      ],
+      "dropoff": [
+        13,
+        5
+      ],
+      "release_tick": 2
+    },
+    {
+      "id": "T6",
+      "pickup": [
+        13,
+        5
+      ],
+      "dropoff": [
+        0,
+        9
+      ],
+      "release_tick": 2
+    },
+    {
+      "id": "T7",
+      "pickup": [
+        0,
+        0
+      ],
+      "dropoff": [
+        14,
+        8
+      ],
+      "release_tick": 3
+    },
+    {
+      "id": "T8",
+      "pickup": [
+        15,
+        0
+      ],
+      "dropoff": [
+        1,
+        8
+      ],
+      "release_tick": 3
+    },
+    {
+      "id": "T9",
+      "pickup": [
+        0,
+        9
+      ],
+      "dropoff": [
+        13,
+        5
+      ],
+      "release_tick": 4
+    },
+    {
+      "id": "T10",
+      "pickup": [
+        15,
+        9
+      ],
+      "dropoff": [
+        0,
+        9
+      ],
+      "release_tick": 4
+    },
+    {
+      "id": "T11",
+      "pickup": [
+        3,
+        2
+      ],
+      "dropoff": [
+        11,
+        7
+      ],
+      "release_tick": 5
+    },
+    {
+      "id": "T12",
+      "pickup": [
+        11,
+        7
+      ],
+      "dropoff": [
+        1,
+        8
+      ],
+      "release_tick": 5
+    },
+    {
+      "id": "T13",
+      "pickup": [
+        1,
+        1
+      ],
+      "dropoff": [
+        13,
+        5
+      ],
+      "release_tick": 6
+    },
+    {
+      "id": "T14",
+      "pickup": [
+        14,
+        1
+      ],
+      "dropoff": [
+        0,
+        9
+      ],
+      "release_tick": 6
+    },
+    {
+      "id": "T15",
+      "pickup": [
+        1,
+        8
+      ],
+      "dropoff": [
+        11,
+        7
+      ],
+      "release_tick": 7
+    },
+    {
+      "id": "T16",
+      "pickup": [
+        14,
+        8
+      ],
+      "dropoff": [
+        1,
+        8
+      ],
+      "release_tick": 7
+    },
+    {
+      "id": "T17",
+      "pickup": [
+        2,
+        5
+      ],
+      "dropoff": [
+        13,
+        5
+      ],
+      "release_tick": 8
+    },
+    {
+      "id": "T18",
+      "pickup": [
+        13,
+        5
+      ],
+      "dropoff": [
+        0,
+        9
+      ],
+      "release_tick": 8
+    },
+    {
+      "id": "T19",
+      "pickup": [
+        0,
+        0
+      ],
+      "dropoff": [
+        11,
+        7
+      ],
+      "release_tick": 9
+    },
+    {
+      "id": "T20",
+      "pickup": [
+        15,
+        0
+      ],
+      "dropoff": [
+        1,
+        8
+      ],
+      "release_tick": 9
+    },
+    {
+      "id": "T21",
+      "pickup": [
+        0,
+        9
+      ],
+      "dropoff": [
+        13,
+        5
+      ],
+      "release_tick": 10
+    },
+    {
+      "id": "T22",
+      "pickup": [
+        15,
+        9
+      ],
+      "dropoff": [
+        0,
+        9
+      ],
+      "release_tick": 10
+    },
+    {
+      "id": "T23",
+      "pickup": [
+        3,
+        2
+      ],
+      "dropoff": [
+        11,
+        7
+      ],
+      "release_tick": 11
+    },
+    {
+      "id": "T24",
+      "pickup": [
+        11,
+        7
+      ],
+      "dropoff": [
+        1,
+        8
+      ],
+      "release_tick": 11
+    },
+    {
+      "id": "T25",
+      "pickup": [
+        1,
+        1
+      ],
+      "dropoff": [
+        13,
+        5
+      ],
+      "release_tick": 12
+    },
+    {
+      "id": "T26",
+      "pickup": [
+        14,
+        1
+      ],
+      "dropoff": [
+        0,
+        9
+      ],
+      "release_tick": 12
+    },
+    {
+      "id": "T27",
+      "pickup": [
+        1,
+        8
+      ],
+      "dropoff": [
+        11,
+        7
+      ],
+      "release_tick": 13
+    },
+    {
+      "id": "T28",
+      "pickup": [
+        14,
+        8
+      ],
+      "dropoff": [
+        1,
+        8
+      ],
+      "release_tick": 13
+    },
+    {
+      "id": "T29",
+      "pickup": [
+        2,
+        5
+      ],
+      "dropoff": [
+        13,
+        5
+      ],
+      "release_tick": 14
+    },
+    {
+      "id": "T30",
+      "pickup": [
+        13,
+        5
+      ],
+      "dropoff": [
+        0,
+        9
+      ],
+      "release_tick": 14
+    }
+  ],
+  "simulation": {
+    "max_ticks": 450
+  }
+}

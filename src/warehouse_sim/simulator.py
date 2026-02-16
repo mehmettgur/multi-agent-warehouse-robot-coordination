@@ -2,11 +2,33 @@ from __future__ import annotations
 
 from warehouse_sim.agents.coordinator_agent import CoordinatorAgent
 from warehouse_sim.grid import GridMap
-from warehouse_sim.models import Mode, RobotState, RunResult, SimulationConfig, TaskState
+from warehouse_sim.models import (
+    AllocationPolicy,
+    Mode,
+    PlannerConfig,
+    RobotState,
+    RunResult,
+    SimulationConfig,
+    TaskState,
+)
 
 
-def run_simulation(config: SimulationConfig, mode: Mode, seed: int | None = None) -> RunResult:
+def run_simulation(
+    config: SimulationConfig,
+    mode: Mode,
+    seed: int | None = None,
+    planner_override: PlannerConfig | None = None,
+    allocator_override: AllocationPolicy | None = None,
+) -> RunResult:
     run_seed = config.seed if seed is None else seed
+    planner = planner_override or config.planner
+
+    if allocator_override is not None:
+        allocator_policy = allocator_override
+    elif mode == "baseline":
+        allocator_policy = "greedy"
+    else:
+        allocator_policy = config.allocator_policy
 
     grid = GridMap(width=config.width, height=config.height, obstacles=set(config.obstacles))
     robots = {
@@ -26,5 +48,8 @@ def run_simulation(config: SimulationConfig, mode: Mode, seed: int | None = None
         robots=robots,
         tasks=tasks,
         max_ticks=config.max_ticks,
+        planner=planner,
+        allocator_policy=allocator_policy,
+        events=config.events,
     )
     return coordinator.run()

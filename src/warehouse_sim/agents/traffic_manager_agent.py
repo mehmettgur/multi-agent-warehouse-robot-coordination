@@ -1,17 +1,18 @@
 from __future__ import annotations
 
 from warehouse_sim.grid import GridMap
-from warehouse_sim.models import PlanStep, RobotState, TaskState
-from warehouse_sim.pathfinding import astar_space_time
+from warehouse_sim.models import PlanStep, PlannerConfig, PlannerDiagnostics, RobotState, TaskState
+from warehouse_sim.pathfinding import plan_path_space_time
 from warehouse_sim.reservation import ReservationTable
 
 
 class TrafficManagerAgent:
     """Prioritized planner with cell-time and edge-time reservations."""
 
-    def __init__(self, grid: GridMap, max_ticks: int) -> None:
+    def __init__(self, grid: GridMap, max_ticks: int, planner: PlannerConfig) -> None:
         self.grid = grid
         self.max_ticks = max_ticks
+        self.planner = planner
 
     def plan_and_reserve(
         self,
@@ -19,10 +20,17 @@ class TrafficManagerAgent:
         tasks: dict[str, TaskState],
         tick: int,
         wait_streaks: dict[str, int] | None = None,
-    ) -> tuple[dict[str, list[PlanStep]], ReservationTable]:
+        blocked_cells: set[tuple[int, int]] | None = None,
+        planner: PlannerConfig | None = None,
+    ) -> tuple[dict[str, list[PlanStep]], ReservationTable, list[PlannerDiagnostics]]:
         reservation_table = ReservationTable()
         planned_paths: dict[str, list[PlanStep]] = {}
+        diagnostics: list[PlannerDiagnostics] = []
+
         streaks = wait_streaks or {}
+        planner_cfg = planner or self.planner
+        blocked = blocked_cells or set()
+
         robot_order = sorted(robots)
         rank_by_robot = {robot_id: idx for idx, robot_id in enumerate(robot_order)}
         targets = {
@@ -33,10 +41,15 @@ class TrafficManagerAgent:
             robot_id: sum(
                 1
                 for other_id, target in targets.items()
-                if other_id != robot_id and target == robots[robot_id].position
+                if (
+                    other_id != robot_id
+                    and target is not None
+                    and GridMap.manhattan(target, robots[robot_id].position) <= 1
+                )
             )
             for robot_id in robots
         }
+        active_targets = {target for target in targets.values() if target is not None}
 
         ordered_robot_ids = sorted(
             robots,
@@ -57,43 +70,76 @@ class TrafficManagerAgent:
             start = robot.position
             goal = target if target is not None else start
 
-            max_time = min(self.max_ticks, tick + self.grid.width * self.grid.height * 2)
-            path_hint = astar_space_time(
-                grid=self.grid,
-                start=start,
-                goal=goal,
-                start_time=tick,
-                max_time=max_time,
-                reservations=reservation_table,
-                robot_id=robot_id,
-            )
-
-            if path_hint is None or len(path_hint) <= 1:
+            if target is None and blocking_scores.get(robot_id, 0) > 0:
+                preferred_next = self._preferred_yield_step(
+                    start=start,
+                    active_targets=active_targets,
+                    blocked_cells=blocked,
+                )
                 next_pos = self._select_safe_next_step(
                     start=start,
-                    target=goal,
-                    preferred_next=start,
+                    target=preferred_next,
+                    preferred_next=preferred_next,
                     reservation_table=reservation_table,
                     tick=tick,
+                    blocked_cells=blocked,
                 )
                 path = [
                     PlanStep(position=start, time=tick),
                     PlanStep(position=next_pos, time=tick + 1),
                 ]
-            elif self._can_reserve_path(path_hint, reservation_table, robot_id):
-                path = path_hint
+                diagnostics.append(
+                    PlannerDiagnostics(
+                        algorithm=planner_cfg.algorithm,
+                        expanded_nodes=0,
+                        planning_time_ms=0.0,
+                        path_cost=0 if next_pos == start else 1,
+                        found_path=True,
+                    )
+                )
             else:
-                next_pos = self._select_safe_next_step(
+                max_time = min(self.max_ticks, tick + self.grid.width * self.grid.height * 2)
+                path_hint, diag = plan_path_space_time(
+                    grid=self.grid,
                     start=start,
-                    target=goal,
-                    preferred_next=path_hint[1].position,
-                    reservation_table=reservation_table,
-                    tick=tick,
+                    goal=goal,
+                    start_time=tick,
+                    max_time=max_time,
+                    planner=planner_cfg,
+                    reservations=reservation_table,
+                    robot_id=robot_id,
+                    blocked_cells=blocked,
                 )
-                path = [
-                    PlanStep(position=start, time=tick),
-                    PlanStep(position=next_pos, time=tick + 1),
-                ]
+                diagnostics.append(diag)
+
+                if path_hint is None or len(path_hint) <= 1:
+                    next_pos = self._select_safe_next_step(
+                        start=start,
+                        target=goal,
+                        preferred_next=start,
+                        reservation_table=reservation_table,
+                        tick=tick,
+                        blocked_cells=blocked,
+                    )
+                    path = [
+                        PlanStep(position=start, time=tick),
+                        PlanStep(position=next_pos, time=tick + 1),
+                    ]
+                elif self._can_reserve_path(path_hint, reservation_table, robot_id):
+                    path = path_hint
+                else:
+                    next_pos = self._select_safe_next_step(
+                        start=start,
+                        target=goal,
+                        preferred_next=path_hint[1].position,
+                        reservation_table=reservation_table,
+                        tick=tick,
+                        blocked_cells=blocked,
+                    )
+                    path = [
+                        PlanStep(position=start, time=tick),
+                        PlanStep(position=next_pos, time=tick + 1),
+                    ]
 
             if self._can_reserve_path(path, reservation_table, robot_id):
                 reservation_table.reserve_path(robot_id, path)
@@ -104,6 +150,7 @@ class TrafficManagerAgent:
                     preferred_next=start,
                     reservation_table=reservation_table,
                     tick=tick,
+                    blocked_cells=blocked,
                 )
                 fallback_path = [
                     PlanStep(position=start, time=tick),
@@ -119,7 +166,33 @@ class TrafficManagerAgent:
 
             planned_paths[robot_id] = path
 
-        return planned_paths, reservation_table
+        return planned_paths, reservation_table, diagnostics
+
+    def _preferred_yield_step(
+        self,
+        start: tuple[int, int],
+        active_targets: set[tuple[int, int]],
+        blocked_cells: set[tuple[int, int]],
+    ) -> tuple[int, int]:
+        candidates = [
+            cell
+            for cell in self.grid.neighbors_with_wait(start)
+            if cell not in blocked_cells
+        ]
+        if not candidates:
+            return start
+
+        center = (self.grid.width // 2, self.grid.height // 2)
+        return min(
+            candidates,
+            key=lambda cell: (
+                1 if cell in active_targets else 0,
+                1 if cell == start else 0,
+                GridMap.manhattan(cell, center),
+                cell[1],
+                cell[0],
+            ),
+        )
 
     def _can_reserve_path(
         self,
@@ -148,6 +221,7 @@ class TrafficManagerAgent:
         preferred_next: tuple[int, int],
         reservation_table: ReservationTable,
         tick: int,
+        blocked_cells: set[tuple[int, int]],
     ) -> tuple[int, int]:
         candidates = [preferred_next]
         others = sorted(
@@ -155,10 +229,14 @@ class TrafficManagerAgent:
             key=lambda pos: (GridMap.manhattan(pos, target), pos[1], pos[0]),
         )
         for cand in others:
+            if cand in blocked_cells:
+                continue
             if cand not in candidates:
                 candidates.append(cand)
 
         for cand in candidates:
+            if cand in blocked_cells:
+                continue
             if reservation_table.is_vertex_reserved(tick + 1, cand):
                 continue
             if reservation_table.is_edge_reserved(tick, cand, start):
@@ -178,11 +256,10 @@ class TrafficManagerAgent:
         rank: int,
     ) -> tuple[int, int, int, int, int]:
         target = self._target_for_robot(robot, tasks)
+        active_task_flag = 0 if (target is not None or blocking_score > 0) else 1
         rotation_rank = (rank - (tick % max(total_robots, 1))) % max(total_robots, 1)
-        if target is None:
-            return (1, 0, 0, rotation_rank, 10**9)
-        eta = GridMap.manhattan(robot.position, target)
-        return (0, -blocking_score, -wait_streak, rotation_rank, eta)
+        eta = GridMap.manhattan(robot.position, target) if target is not None else 10**9
+        return (active_task_flag, -blocking_score, -wait_streak, rotation_rank, eta)
 
     @staticmethod
     def _target_for_robot(

@@ -1,0 +1,241 @@
+{
+  "name": "stochastic_delay",
+  "seed": 37,
+  "planner": {
+    "algorithm": "astar",
+    "heuristic_weight": 1.0
+  },
+  "allocator_policy": "hungarian",
+  "grid": {
+    "width": 12,
+    "height": 8,
+    "obstacles": [
+      [
+        3,
+        2
+      ],
+      [
+        3,
+        4
+      ],
+      [
+        8,
+        2
+      ],
+      [
+        8,
+        4
+      ]
+    ]
+  },
+  "stations": {
+    "pickups": [
+      [
+        1,
+        1
+      ],
+      [
+        10,
+        1
+      ],
+      [
+        1,
+        6
+      ],
+      [
+        10,
+        6
+      ],
+      [
+        2,
+        3
+      ],
+      [
+        9,
+        3
+      ]
+    ],
+    "dropoffs": [
+      [
+        10,
+        1
+      ],
+      [
+        1,
+        1
+      ],
+      [
+        10,
+        6
+      ],
+      [
+        1,
+        6
+      ],
+      [
+        9,
+        3
+      ],
+      [
+        2,
+        3
+      ]
+    ]
+  },
+  "robots": [
+    {
+      "id": "R1",
+      "start": [
+        0,
+        7
+      ]
+    },
+    {
+      "id": "R2",
+      "start": [
+        2,
+        7
+      ]
+    },
+    {
+      "id": "R3",
+      "start": [
+        5,
+        7
+      ]
+    },
+    {
+      "id": "R4",
+      "start": [
+        8,
+        7
+      ]
+    },
+    {
+      "id": "R5",
+      "start": [
+        11,
+        7
+      ]
+    }
+  ],
+  "tasks": [
+    {
+      "id": "T1",
+      "pickup": [
+        1,
+        1
+      ],
+      "dropoff": [
+        10,
+        1
+      ],
+      "release_tick": 0
+    },
+    {
+      "id": "T2",
+      "pickup": [
+        10,
+        1
+      ],
+      "dropoff": [
+        1,
+        1
+      ],
+      "release_tick": 0
+    },
+    {
+      "id": "T3",
+      "pickup": [
+        1,
+        6
+      ],
+      "dropoff": [
+        10,
+        6
+      ],
+      "release_tick": 1
+    },
+    {
+      "id": "T4",
+      "pickup": [
+        10,
+        6
+      ],
+      "dropoff": [
+        1,
+        6
+      ],
+      "release_tick": 1
+    },
+    {
+      "id": "T5",
+      "pickup": [
+        2,
+        3
+      ],
+      "dropoff": [
+        9,
+        3
+      ],
+      "release_tick": 2
+    },
+    {
+      "id": "T6",
+      "pickup": [
+        9,
+        3
+      ],
+      "dropoff": [
+        1,
+        6
+      ],
+      "release_tick": 2
+    },
+    {
+      "id": "T7",
+      "pickup": [
+        1,
+        1
+      ],
+      "dropoff": [
+        9,
+        3
+      ],
+      "release_tick": 4
+    },
+    {
+      "id": "T8",
+      "pickup": [
+        10,
+        6
+      ],
+      "dropoff": [
+        2,
+        3
+      ],
+      "release_tick": 5
+    }
+  ],
+  "events": [
+    {
+      "type": "stochastic_delay",
+      "probability": 0.15,
+      "start_tick": 3,
+      "end_tick": 90
+    },
+    {
+      "type": "stochastic_delay",
+      "probability": 0.25,
+      "start_tick": 20,
+      "end_tick": 35,
+      "robot_ids": [
+        "R2",
+        "R4"
+      ]
+    }
+  ],
+  "simulation": {
+    "max_ticks": 260
+  }
+}

@@ -1,11 +1,15 @@
 from warehouse_sim.agents.traffic_manager_agent import TrafficManagerAgent
 from warehouse_sim.grid import GridMap
-from warehouse_sim.models import RobotState, TaskState
+from warehouse_sim.models import PlannerConfig, RobotState, TaskState
 
 
 def _build_conflicting_line_case() -> tuple[TrafficManagerAgent, dict[str, RobotState], dict[str, TaskState]]:
     grid = GridMap(width=5, height=1, obstacles=set())
-    manager = TrafficManagerAgent(grid=grid, max_ticks=20)
+    manager = TrafficManagerAgent(
+        grid=grid,
+        max_ticks=20,
+        planner=PlannerConfig(algorithm="astar", heuristic_weight=1.0),
+    )
     robots = {
         "R1": RobotState(
             robot_id="R1",
@@ -44,13 +48,13 @@ def _build_conflicting_line_case() -> tuple[TrafficManagerAgent, dict[str, Robot
 def test_priority_rotation_changes_first_mover_by_tick() -> None:
     manager, robots, tasks = _build_conflicting_line_case()
 
-    tick0_paths, _ = manager.plan_and_reserve(
+    tick0_paths, _, _ = manager.plan_and_reserve(
         robots=robots,
         tasks=tasks,
         tick=0,
         wait_streaks={"R1": 0, "R2": 0},
     )
-    tick1_paths, _ = manager.plan_and_reserve(
+    tick1_paths, _, _ = manager.plan_and_reserve(
         robots=robots,
         tasks=tasks,
         tick=1,
@@ -66,7 +70,7 @@ def test_priority_rotation_changes_first_mover_by_tick() -> None:
 def test_wait_streak_overrides_eta_tie_for_deadlock_break() -> None:
     manager, robots, tasks = _build_conflicting_line_case()
 
-    paths, _ = manager.plan_and_reserve(
+    paths, _, _ = manager.plan_and_reserve(
         robots=robots,
         tasks=tasks,
         tick=0,

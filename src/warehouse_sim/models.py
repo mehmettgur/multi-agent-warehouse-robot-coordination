@@ -7,6 +7,14 @@ Position = tuple[int, int]
 Mode = Literal["baseline", "coordinated"]
 Phase = Literal["to_pickup", "to_dropoff"]
 ActionType = Literal["MOVE", "WAIT"]
+PlannerAlgorithm = Literal["astar", "dijkstra", "weighted_astar"]
+AllocationPolicy = Literal["greedy", "hungarian"]
+
+
+@dataclass(frozen=True)
+class PlannerConfig:
+    algorithm: PlannerAlgorithm = "astar"
+    heuristic_weight: float = 1.4
 
 
 @dataclass(frozen=True)
@@ -33,6 +41,7 @@ class TaskState:
     assigned_tick: int | None = None
     pickup_tick: int | None = None
     completed_tick: int | None = None
+    completed_by_robot_id: str | None = None
 
     @classmethod
     def from_spec(cls, spec: TaskSpec) -> "TaskState":
@@ -82,6 +91,24 @@ class Assignment:
     eta_to_pickup: int
 
 
+@dataclass(frozen=True)
+class PlannerDiagnostics:
+    algorithm: PlannerAlgorithm
+    expanded_nodes: int
+    planning_time_ms: float
+    path_cost: int
+    found_path: bool
+
+    def to_dict(self) -> dict:
+        return {
+            "algorithm": self.algorithm,
+            "expanded_nodes": self.expanded_nodes,
+            "planning_time_ms": self.planning_time_ms,
+            "path_cost": self.path_cost,
+            "found_path": self.found_path,
+        }
+
+
 @dataclass
 class SimulationConfig:
     name: str
@@ -94,6 +121,8 @@ class SimulationConfig:
     tasks: list[TaskSpec]
     max_ticks: int = 200
     events: list[dict] = field(default_factory=list)
+    planner: PlannerConfig = field(default_factory=PlannerConfig)
+    allocator_policy: AllocationPolicy = "greedy"
 
 
 @dataclass
@@ -103,6 +132,7 @@ class TickSnapshot:
     robot_tasks: dict[str, str | None]
     collision_events: int
     completed_tasks: int
+    blocked_cells: list[Position] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -113,6 +143,7 @@ class TickSnapshot:
             "robot_tasks": self.robot_tasks,
             "collision_events": self.collision_events,
             "completed_tasks": self.completed_tasks,
+            "blocked_cells": [[x, y] for x, y in self.blocked_cells],
         }
 
 
@@ -124,9 +155,21 @@ class MetricsReport:
     wait_count: int
     collision_count: int
     replanning_count: int
+    general_replanning_count: int
+    micro_replanning_count: int
     completed_tasks: int
     total_tasks: int
     task_completion_times: dict[str, int]
+    throughput: float
+    fairness_task_std: float
+    fairness_task_cv: float
+    tasks_completed_per_robot: dict[str, int]
+    congestion_heatmap: dict[str, int]
+    planner_expanded_nodes_total: int
+    planner_time_ms_total: float
+    planner_path_cost_total: int
+    delay_event_count: int
+    dynamic_block_replans: int
 
     def to_dict(self) -> dict:
         return {
@@ -136,9 +179,21 @@ class MetricsReport:
             "wait_count": self.wait_count,
             "collision_count": self.collision_count,
             "replanning_count": self.replanning_count,
+            "general_replanning_count": self.general_replanning_count,
+            "micro_replanning_count": self.micro_replanning_count,
             "completed_tasks": self.completed_tasks,
             "total_tasks": self.total_tasks,
             "task_completion_times": self.task_completion_times,
+            "throughput": self.throughput,
+            "fairness_task_std": self.fairness_task_std,
+            "fairness_task_cv": self.fairness_task_cv,
+            "tasks_completed_per_robot": self.tasks_completed_per_robot,
+            "congestion_heatmap": self.congestion_heatmap,
+            "planner_expanded_nodes_total": self.planner_expanded_nodes_total,
+            "planner_time_ms_total": self.planner_time_ms_total,
+            "planner_path_cost_total": self.planner_path_cost_total,
+            "delay_event_count": self.delay_event_count,
+            "dynamic_block_replans": self.dynamic_block_replans,
         }
 
 
@@ -149,12 +204,18 @@ class RunResult:
     seed: int
     metrics: MetricsReport
     timeline: list[TickSnapshot]
+    planner_algorithm: PlannerAlgorithm
+    heuristic_weight: float
+    allocator_policy: AllocationPolicy
 
     def to_dict(self) -> dict:
         return {
             "scenario_name": self.scenario_name,
             "mode": self.mode,
             "seed": self.seed,
+            "planner_algorithm": self.planner_algorithm,
+            "heuristic_weight": self.heuristic_weight,
+            "allocator_policy": self.allocator_policy,
             "metrics": self.metrics.to_dict(),
             "timeline": [snapshot.to_dict() for snapshot in self.timeline],
         }

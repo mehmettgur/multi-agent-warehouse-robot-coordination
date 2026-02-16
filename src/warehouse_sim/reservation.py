@@ -28,13 +28,46 @@ class ReservationTable:
             raise ValueError(
                 f"Edge ({from_pos}->{to_pos}, t={time}) already reserved by {owner}, cannot reserve for {robot_id}"
             )
+        reverse_owner = self._edge[time].get((to_pos, from_pos))
+        if (
+            reverse_owner is not None
+            and reverse_owner != robot_id
+            and from_pos != to_pos
+        ):
+            raise ValueError(
+                f"Reverse edge ({to_pos}->{from_pos}, t={time}) already reserved by {reverse_owner}, cannot reserve for {robot_id}"
+            )
         self._edge[time][(from_pos, to_pos)] = robot_id
 
     def reserve_path(self, robot_id: str, path: list[PlanStep]) -> None:
+        # Pre-check entire path first to keep path reservation atomic.
         for step in path:
-            self.reserve_vertex(step.time, step.position, robot_id)
+            owner = self._vertex.get(step.time, {}).get(step.position)
+            if owner is not None and owner != robot_id:
+                raise ValueError(
+                    f"Vertex ({step.position}, t={step.time}) already reserved by {owner}, cannot reserve for {robot_id}"
+                )
+
         for current, nxt in zip(path, path[1:]):
-            self.reserve_edge(current.time, current.position, nxt.position, robot_id)
+            owner = self._edge.get(current.time, {}).get((current.position, nxt.position))
+            if owner is not None and owner != robot_id:
+                raise ValueError(
+                    f"Edge ({current.position}->{nxt.position}, t={current.time}) already reserved by {owner}, cannot reserve for {robot_id}"
+                )
+            reverse_owner = self._edge.get(current.time, {}).get((nxt.position, current.position))
+            if (
+                reverse_owner is not None
+                and reverse_owner != robot_id
+                and current.position != nxt.position
+            ):
+                raise ValueError(
+                    f"Reverse edge ({nxt.position}->{current.position}, t={current.time}) already reserved by {reverse_owner}, cannot reserve for {robot_id}"
+                )
+
+        for step in path:
+            self._vertex[step.time][step.position] = robot_id
+        for current, nxt in zip(path, path[1:]):
+            self._edge[current.time][(current.position, nxt.position)] = robot_id
 
     def is_vertex_reserved(
         self, time: int, pos: Position, robot_id: str | None = None
