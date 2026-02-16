@@ -2,6 +2,7 @@ LICENSE
 README.md
 pyproject.toml
 src/warehouse_sim/__init__.py
+src/warehouse_sim/events.py
 src/warehouse_sim/grid.py
 src/warehouse_sim/loader.py
 src/warehouse_sim/metrics.py
@@ -20,10 +21,14 @@ src/warehouse_sim/agents/coordinator_agent.py
 src/warehouse_sim/agents/robot_agent.py
 src/warehouse_sim/agents/task_allocator_agent.py
 src/warehouse_sim/agents/traffic_manager_agent.py
+src/warehouse_sim/optimization/__init__.py
+src/warehouse_sim/optimization/hungarian.py
 src/warehouse_sim/policies/__init__.py
 src/warehouse_sim/policies/baseline_policy.py
 src/warehouse_sim/policies/coordinated_policy.py
 tests/test_allocator.py
+tests/test_events.py
+tests/test_hungarian.py
 tests/test_metrics.py
 tests/test_pathfinding.py
 tests/test_priority_rotation.py

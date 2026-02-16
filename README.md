@@ -87,6 +87,17 @@ Uretilen ciktilar:
 - `results/*_comparison.json`, `results/*_comparison.csv`
 - `results/ablation_*.json`, `results/ablation_*.csv`
 
+### Makale tablosu uretimi (sade CSV)
+```bash
+python -m warehouse_sim.paper_tables \
+  --input-csv results/ablation_YYYYMMDD_HHMMSS.csv \
+  --output-dir results
+```
+
+Uretilen dosyalar:
+- `results/paper_main_table.csv`
+- `results/paper_appendix_table.csv`
+
 ## Web UI
 ```bash
 streamlit run app/dashboard.py
