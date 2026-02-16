@@ -10,6 +10,10 @@ Deterministic 2D grid warehouse simulation for multi-agent task allocation and c
   - `CoordinatorAgent` (tick loop + metrics)
 - A* pathfinding with Manhattan heuristic and `WAIT` action.
 - Coordinated mode with `vertex-time` + `edge-time` collision constraints.
+- Deadlock-break priority scheme in coordinated mode:
+  - wait-streak aware ordering
+  - tick-based priority rotation
+  - blocker-aware tie handling
 - Baseline mode (independent no-reservation planning) for comparison.
 - Scenario-driven experiments (JSON config).
 - Metrics and reproducible runs with fixed seed.

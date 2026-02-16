@@ -25,12 +25,25 @@ class TrafficManagerAgent:
         streaks = wait_streaks or {}
         robot_order = sorted(robots)
         rank_by_robot = {robot_id: idx for idx, robot_id in enumerate(robot_order)}
+        targets = {
+            robot_id: self._target_for_robot(robot, tasks)
+            for robot_id, robot in robots.items()
+        }
+        blocking_scores = {
+            robot_id: sum(
+                1
+                for other_id, target in targets.items()
+                if other_id != robot_id and target == robots[robot_id].position
+            )
+            for robot_id in robots
+        }
 
         ordered_robot_ids = sorted(
             robots,
             key=lambda rid: self._priority_key(
                 robot=robots[rid],
                 tasks=tasks,
+                blocking_score=blocking_scores.get(rid, 0),
                 wait_streak=streaks.get(rid, 0),
                 tick=tick,
                 total_robots=len(robots),
@@ -158,17 +171,18 @@ class TrafficManagerAgent:
         self,
         robot: RobotState,
         tasks: dict[str, TaskState],
+        blocking_score: int,
         wait_streak: int,
         tick: int,
         total_robots: int,
         rank: int,
-    ) -> tuple[int, int, int, int]:
+    ) -> tuple[int, int, int, int, int]:
         target = self._target_for_robot(robot, tasks)
         rotation_rank = (rank - (tick % max(total_robots, 1))) % max(total_robots, 1)
         if target is None:
-            return (1, 0, 10**9, rotation_rank)
+            return (1, 0, 0, rotation_rank, 10**9)
         eta = GridMap.manhattan(robot.position, target)
-        return (0, -wait_streak, eta, rotation_rank)
+        return (0, -blocking_score, -wait_streak, rotation_rank, eta)
 
     @staticmethod
     def _target_for_robot(

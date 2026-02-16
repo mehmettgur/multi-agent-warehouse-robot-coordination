@@ -37,6 +37,7 @@ class CoordinatorAgent:
         self.traffic_manager = TrafficManagerAgent(grid=grid, max_ticks=max_ticks)
         self.baseline_policy = BaselinePolicy(grid=grid, max_ticks=max_ticks)
         self.coordinated_policy = CoordinatedPolicy(traffic_manager=self.traffic_manager)
+        self.wait_streaks = {robot_id: 0 for robot_id in robots}
 
     def run(self) -> RunResult:
         timeline: list[TickSnapshot] = []
@@ -59,6 +60,7 @@ class CoordinatorAgent:
                     robots=self.robots,
                     tasks=self.tasks,
                     tick=tick,
+                    wait_streaks=self.wait_streaks,
                 )
                 self.metrics.add_replans(len(self.robots))
             else:
@@ -196,9 +198,11 @@ class CoordinatorAgent:
 
             if robot_id in conflicts or intended == robot.position:
                 robot.last_action = "WAIT"
+                self.wait_streaks[robot_id] = self.wait_streaks.get(robot_id, 0) + 1
                 self.metrics.add_wait()
                 continue
 
             robot.position = intended
             robot.last_action = "MOVE"
+            self.wait_streaks[robot_id] = 0
             self.metrics.add_move()
