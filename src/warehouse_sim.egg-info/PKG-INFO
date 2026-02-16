@@ -1,3 +1,16 @@
+Metadata-Version: 2.4
+Name: warehouse-sim
+Version: 0.1.0
+Summary: Multi-agent warehouse robot coordination simulator
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Provides-Extra: dev
+Requires-Dist: pytest>=8.0; extra == "dev"
+Provides-Extra: ui
+Requires-Dist: streamlit>=1.33; extra == "ui"
+Dynamic: license-file
+
 # Multi-Agent Warehouse Robot Coordination
 
 Deterministic 2D grid warehouse simulation for multi-agent task allocation and collision-free path planning.
@@ -27,8 +40,6 @@ Deterministic 2D grid warehouse simulation for multi-agent task allocation and c
 - `results/`: generated run outputs
 
 ## Setup
-Python requirement: `3.10+`
-
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
@@ -69,12 +80,10 @@ Dashboard includes:
 - Scenario selection
 - Run Type selection (`Single Run` / `Baseline vs Coordinated`)
 - Seed and max-ticks overrides
-- Clean simulation summary cards (instead of raw JSON output)
-- Aciklayici metrik kartlari ve metrik anlam rehberi
-- Daha iyi gorsel grid replay (renkli robotlar, iz/trail, adim kontrol tuslari)
-- Baseline vs coordinated karsilastirma kartlari ve delta gorunumu
-- In-app scenario JSON editing/validation (opsiyonel, expander icinde)
-- Edited scenario save to `configs/scenarios/`
+- In-app scenario JSON editing and validation
+- Save edited scenarios to `configs/scenarios/`
+- Baseline vs coordinated comparison table (when selected)
+- Tick-based replay for one or both modes
 
 ## Core Metrics
 - `makespan`
