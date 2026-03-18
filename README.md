@@ -17,6 +17,8 @@ Bu sürüm, proje anlatısını üç katmana ayırır:
   - `astar`
   - `dijkstra`
   - `weighted_astar`
+- İkinci baseline:
+  - `baseline_priority` (statik öncelik + reservation, micro-replan kapalı)
 - Coordinated mod:
   - vertex-time + edge-time rezervasyon
   - deterministic prioritized planning
@@ -118,6 +120,11 @@ python -m warehouse_sim.runner --suite allocator --latex
 python -m warehouse_sim.runner --suite planner --latex
 ```
 
+### Koordinasyon bileşen ablation tablosu
+```bash
+python -m warehouse_sim.runner --suite coordination --latex
+```
+
 ### Robustness appendix tablosu
 ```bash
 python -m warehouse_sim.runner --suite robustness --seeds 11 17 23 31 37 --latex
@@ -132,6 +139,7 @@ Varsayılan çıktı klasörü:
 - `results/paper/main_comparison.csv`
 - `results/paper/allocator_ablation.csv`
 - `results/paper/planner_ablation.csv`
+- `results/paper/coordination_ablation.csv`
 - `results/paper/robustness.csv`
 - `results/paper/*.tex`
 - `results/paper/*.svg`
@@ -140,6 +148,7 @@ Ham suite çıktıları:
 - `results/paper/main_raw.csv`
 - `results/paper/allocator_raw.csv`
 - `results/paper/planner_raw.csv`
+- `results/paper/coordination_raw.csv`
 - `results/paper/robustness_raw.csv`
 - `results/paper/all_raw.csv`
 
@@ -164,6 +173,9 @@ python -m warehouse_sim.paper_tables \
   --latex
 ```
 
+## Makale Notları
+- Mimari diyagram ve RQ bazlı tablo planı: `docs/PAPER_ARCHITECTURE_AND_RQ.md`
+
 ## Test
 ```bash
 pytest
@@ -175,6 +187,8 @@ pytest
 
 ## Notlar
 - Ana anlatı `A* + coordinated planning` üzerinedir.
+- `baseline_priority`, bağımsız baseline'a göre daha adil ikinci baseline olarak kullanılır.
+- `coordination` suite'i, ikinci baseline ve koordinasyon bileşen ablation'ını birlikte üretir.
 - `Weighted A*` ve `Dijkstra`, planner ablation içinde destekleyici analiz olarak tutulur.
 - `Hungarian`, ana coordination tablosunda değil; ayrı allocator ablation tablosunda değerlendirilir.
 - `narrow_corridor` senaryosu legacy kabul edilir ve kanonik paper/demo paketlerine dahil edilmez.

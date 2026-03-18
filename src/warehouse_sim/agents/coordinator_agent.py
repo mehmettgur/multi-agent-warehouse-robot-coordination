@@ -10,6 +10,7 @@ from warehouse_sim.grid import GridMap
 from warehouse_sim.metrics import MetricsCollector
 from warehouse_sim.models import (
     AllocationPolicy,
+    CoordinationConfig,
     Mode,
     PlanStep,
     PlannerConfig,
@@ -37,6 +38,7 @@ class CoordinatorAgent:
         max_ticks: int,
         planner: PlannerConfig,
         allocator_policy: AllocationPolicy,
+        coordination: CoordinationConfig,
         events: list[dict],
     ) -> None:
         self.scenario_name = scenario_name
@@ -48,6 +50,7 @@ class CoordinatorAgent:
         self.max_ticks = max_ticks
         self.planner = planner
         self.allocator_policy = allocator_policy
+        self.coordination = coordination
 
         self.rng = random.Random(seed)
         self.metrics = MetricsCollector()
@@ -56,6 +59,7 @@ class CoordinatorAgent:
             grid=grid,
             max_ticks=max_ticks,
             planner=planner,
+            coordination=coordination,
         )
         self.baseline_policy = BaselinePolicy(grid=grid, max_ticks=max_ticks, planner=planner)
         self.coordinated_policy = CoordinatedPolicy(traffic_manager=self.traffic_manager)
@@ -81,7 +85,7 @@ class CoordinatorAgent:
 
             self._update_task_progress_on_position(tick)
 
-            alloc_policy = "greedy" if self.mode == "baseline" else self.allocator_policy
+            alloc_policy = "greedy" if self.mode in {"baseline", "baseline_priority"} else self.allocator_policy
             self.allocator.assign_tasks(
                 robots=self.robots,
                 tasks=self.tasks,
@@ -92,7 +96,7 @@ class CoordinatorAgent:
             self._opportunistic_reassignment(tick)
             self._update_task_progress_on_position(tick)
 
-            if self.mode == "coordinated":
+            if self.mode in {"coordinated", "baseline_priority"}:
                 intents, _, diagnostics = self.coordinated_policy.plan_intents(
                     robots=self.robots,
                     tasks=self.tasks,
@@ -100,6 +104,7 @@ class CoordinatorAgent:
                     wait_streaks=self.wait_streaks,
                     blocked_cells=active_blocked,
                     planner=self.planner,
+                    coordination=self.coordination,
                 )
                 self.metrics.add_general_replans(len(self.robots))
             else:
@@ -127,7 +132,7 @@ class CoordinatorAgent:
                     intents[robot_id] = self.robots[robot_id].position
 
             conflicts, conflict_pairs = self._detect_conflicts(intents)
-            if self.mode == "coordinated" and conflicts:
+            if self.coordination.micro_replan and self.mode in {"coordinated", "baseline_priority"} and conflicts:
                 intents, micro_replans, micro_diagnostics = self._resolve_local_conflicts(
                     intents=intents,
                     conflicts=conflicts,
@@ -138,12 +143,12 @@ class CoordinatorAgent:
                 self.metrics.add_planner_diagnostics(micro_diagnostics)
 
                 conflicts, conflict_pairs = self._detect_conflicts(intents)
-                if conflicts:
+                if conflicts and self.mode == "coordinated":
                     intents = self._deterministic_fallback(intents=intents, conflicts=conflicts, tick=tick)
                     conflicts, conflict_pairs = self._detect_conflicts(intents)
 
             if conflict_pairs:
-                if self.mode == "baseline":
+                if self.mode == "baseline" or self.coordination.variant != "full":
                     self.metrics.add_collisions(conflict_pairs)
                 else:
                     # Coordinated mode converts unresolved conflicts into WAIT actions.
@@ -189,6 +194,7 @@ class CoordinatorAgent:
             planner_algorithm=self.planner.algorithm,
             heuristic_weight=self.planner.heuristic_weight,
             allocator_policy=self.allocator_policy,
+            coordination_variant=self.coordination.variant,
         )
 
     def _update_task_progress_on_position(self, tick: int) -> None:

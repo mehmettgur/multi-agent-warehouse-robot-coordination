@@ -17,6 +17,7 @@ PLANNER_LABELS: dict[PlannerName, str] = {
 }
 MODE_LABELS: dict[ModeName, str] = {
     "baseline": "Baseline",
+    "baseline_priority": "Öncelikli Baseline",
     "coordinated": "Koordineli",
 }
 ALLOCATOR_LABELS: dict[AllocatorName, str] = {
@@ -28,13 +29,23 @@ SUITE_OUTPUTS: dict[str, str] = {
     "main": "main_comparison",
     "allocator": "allocator_ablation",
     "planner": "planner_ablation",
+    "coordination": "coordination_ablation",
     "robustness": "robustness",
 }
 SUITE_CAPTIONS: dict[str, str] = {
     "main": "Temel senaryolarda baseline ve koordineli mod karşılaştırması.",
     "allocator": "Koordineli mod altında görev atama politikalarının karşılaştırması.",
     "planner": "Koordineli mod altında planlayıcı algoritmalarının karşılaştırması.",
+    "coordination": "Koordinasyon bileşenlerinin ve daha adil baseline varyantının karşılaştırması.",
     "robustness": "Dinamik olaylar altında koordineli mod dayanıklılık özeti.",
+}
+COORDINATION_LABELS: dict[str, str] = {
+    "independent": "Bağımsız Baseline",
+    "priority_static": "Öncelikli Baseline (Statik Öncelik)",
+    "vertex_only": "Koordineli (Edge Kapalı)",
+    "static_priority": "Koordineli (Statik Öncelik)",
+    "no_micro_replan": "Koordineli (Micro-Replan Kapalı)",
+    "full": "Koordineli (Tam)",
 }
 
 
@@ -191,6 +202,27 @@ def build_planner_ablation_table(rows: list[dict[str, object]]) -> list[dict[str
     return table
 
 
+def build_coordination_ablation_table(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    table: list[dict[str, object]] = []
+    for row in rows:
+        completed = _to_int(row.get("completed_tasks"))
+        total = max(1, _to_int(row.get("total_tasks")))
+        variant = str(row.get("coordination_variant", "full"))
+        table.append(
+            {
+                "Senaryo": row.get("scenario", ""),
+                "Varyant": COORDINATION_LABELS.get(variant, variant),
+                "Mod": MODE_LABELS.get(str(row.get("mode", "coordinated")), str(row.get("mode", "coordinated"))),
+                "Tamamlama Oranı": _format_completion_ratio(completed, total),
+                "Çakışma": _to_int(row.get("collision_count")),
+                "Makespan": _to_int(row.get("makespan")),
+                "Throughput": round(_to_float(row.get("throughput")), 4),
+                "Bekleme": _to_int(row.get("wait_count")),
+            }
+        )
+    return table
+
+
 def build_robustness_table(rows: list[dict[str, object]]) -> list[dict[str, object]]:
     grouped: dict[str, list[dict[str, object]]] = {}
     for row in rows:
@@ -316,6 +348,8 @@ def _suite_table_rows(suite: str, rows: list[dict[str, object]]) -> list[dict[st
         return build_allocator_ablation_table(rows)
     if suite == "planner":
         return build_planner_ablation_table(rows)
+    if suite == "coordination":
+        return build_coordination_ablation_table(rows)
     if suite == "robustness":
         return build_robustness_table(rows)
     raise ValueError(f"Unsupported suite: {suite}")

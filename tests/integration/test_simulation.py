@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from warehouse_sim.loader import load_scenario
-from warehouse_sim.models import PlannerConfig
+from warehouse_sim.models import CoordinationConfig, PlannerConfig
 from warehouse_sim.runner import run_ablation, run_comparison
 from warehouse_sim.simulator import run_simulation
 
@@ -16,6 +16,25 @@ def test_baseline_has_conflicts_in_narrow_corridor_swap() -> None:
     config = load_scenario("configs/scenarios/narrow_corridor_swap.json")
     result = run_simulation(config=config, mode="baseline", seed=17)
     assert result.metrics.collision_count > 0
+
+
+def test_priority_baseline_improves_over_independent_baseline_in_narrow_corridor_swap() -> None:
+    config = load_scenario("configs/scenarios/narrow_corridor_swap.json")
+    baseline = run_simulation(config=config, mode="baseline", seed=17)
+    priority_baseline = run_simulation(
+        config=config,
+        mode="baseline_priority",
+        seed=17,
+        coordination_override=CoordinationConfig(
+            variant="priority_static",
+            edge_conflicts=True,
+            dynamic_priority=False,
+            micro_replan=False,
+        ),
+    )
+
+    assert priority_baseline.metrics.completed_tasks >= baseline.metrics.completed_tasks
+    assert priority_baseline.metrics.collision_count <= baseline.metrics.collision_count
 
 
 def test_stochastic_delay_scenario_is_deterministic_with_same_seed() -> None:

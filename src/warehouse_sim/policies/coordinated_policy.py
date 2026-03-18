@@ -2,7 +2,14 @@ from __future__ import annotations
 
 from warehouse_sim.agents.robot_agent import RobotAgent
 from warehouse_sim.agents.traffic_manager_agent import TrafficManagerAgent
-from warehouse_sim.models import PlannerConfig, PlannerDiagnostics, Position, RobotState, TaskState
+from warehouse_sim.models import (
+    CoordinationConfig,
+    PlannerConfig,
+    PlannerDiagnostics,
+    Position,
+    RobotState,
+    TaskState,
+)
 from warehouse_sim.reservation import ReservationTable
 
 
@@ -19,6 +26,7 @@ class CoordinatedPolicy:
         wait_streaks: dict[str, int] | None = None,
         blocked_cells: set[tuple[int, int]] | None = None,
         planner: PlannerConfig | None = None,
+        coordination: CoordinationConfig | None = None,
     ) -> tuple[dict[str, Position], ReservationTable, list[PlannerDiagnostics]]:
         planned_paths, reservation_table, diagnostics = self.traffic_manager.plan_and_reserve(
             robots=robots,
@@ -27,6 +35,7 @@ class CoordinatedPolicy:
             wait_streaks=wait_streaks,
             blocked_cells=blocked_cells,
             planner=planner,
+            coordination=coordination,
         )
 
         intents: dict[str, Position] = {}

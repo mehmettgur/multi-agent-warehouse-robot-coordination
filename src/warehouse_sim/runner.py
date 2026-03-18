@@ -9,7 +9,14 @@ from typing import Literal
 
 from warehouse_sim.figures import generate_paper_figures
 from warehouse_sim.loader import load_scenario
-from warehouse_sim.models import AllocationPolicy, PlannerAlgorithm, PlannerConfig
+from warehouse_sim.models import (
+    AllocationPolicy,
+    CoordinationConfig,
+    CoordinationVariant,
+    Mode,
+    PlannerAlgorithm,
+    PlannerConfig,
+)
 from warehouse_sim.paper_tables import generate_suite_tables
 from warehouse_sim.scenario_catalog import (
     list_available_scenarios,
@@ -19,7 +26,7 @@ from warehouse_sim.scenario_catalog import (
 )
 from warehouse_sim.simulator import run_simulation
 
-PaperSuite = Literal["main", "allocator", "planner", "robustness", "all"]
+PaperSuite = Literal["main", "allocator", "planner", "coordination", "robustness", "all"]
 DEFAULT_ROBUSTNESS_SEEDS = [11, 17, 23, 31, 37]
 
 
@@ -43,21 +50,62 @@ def _planner_config(algorithm: PlannerAlgorithm, heuristic_weight: float = 1.0) 
     return PlannerConfig(algorithm=algorithm, heuristic_weight=heuristic_weight)
 
 
+def _coordination_config(variant: CoordinationVariant) -> CoordinationConfig:
+    if variant == "independent":
+        return CoordinationConfig(variant="independent")
+    if variant == "priority_static":
+        return CoordinationConfig(
+            variant="priority_static",
+            edge_conflicts=True,
+            dynamic_priority=False,
+            micro_replan=False,
+        )
+    if variant == "vertex_only":
+        return CoordinationConfig(
+            variant="vertex_only",
+            edge_conflicts=False,
+            dynamic_priority=True,
+            micro_replan=True,
+        )
+    if variant == "static_priority":
+        return CoordinationConfig(
+            variant="static_priority",
+            edge_conflicts=True,
+            dynamic_priority=False,
+            micro_replan=True,
+        )
+    if variant == "no_micro_replan":
+        return CoordinationConfig(
+            variant="no_micro_replan",
+            edge_conflicts=True,
+            dynamic_priority=True,
+            micro_replan=False,
+        )
+    return CoordinationConfig(
+        variant="full",
+        edge_conflicts=True,
+        dynamic_priority=True,
+        micro_replan=True,
+    )
+
+
 def _run_row(
     suite: str,
     scenario_path_str: str,
     planner: PlannerConfig,
     allocator: AllocationPolicy,
-    mode: str,
+    mode: Mode,
     seed: int,
+    coordination: CoordinationConfig,
 ) -> dict:
     config = load_scenario(scenario_path_str)
     result = run_simulation(
         config=config,
-        mode=mode,  # type: ignore[arg-type]
+        mode=mode,
         seed=seed,
         planner_override=planner,
         allocator_override=allocator,
+        coordination_override=coordination,
     )
     return {
         "suite": suite,
@@ -68,6 +116,7 @@ def _run_row(
         "planner": planner.algorithm,
         "heuristic_weight": planner.heuristic_weight,
         "allocator": allocator,
+        "coordination_variant": result.coordination_variant,
         **result.metrics.to_dict(),
     }
 
@@ -78,11 +127,14 @@ def run_comparison(
     output_dir: str,
     planner: PlannerConfig | None = None,
     allocator: AllocationPolicy | None = None,
+    coordination: CoordinationConfig | None = None,
 ) -> dict:
     config = load_scenario(scenario_path)
     use_seed = config.seed if seed is None else seed
     baseline_allocator = allocator if allocator is not None else "greedy"
     coordinated_allocator = allocator if allocator is not None else config.allocator_policy
+    baseline_coordination = coordination or _coordination_config("independent")
+    coordinated_coordination = coordination or config.coordination
 
     baseline = run_simulation(
         config=config,
@@ -90,6 +142,7 @@ def run_comparison(
         seed=use_seed,
         planner_override=planner,
         allocator_override=allocator,
+        coordination_override=baseline_coordination,
     )
     coordinated = run_simulation(
         config=config,
@@ -97,6 +150,7 @@ def run_comparison(
         seed=use_seed,
         planner_override=planner,
         allocator_override=allocator,
+        coordination_override=coordinated_coordination,
     )
 
     payload = {
@@ -108,6 +162,8 @@ def run_comparison(
         ),
         "baseline_allocator": baseline_allocator,
         "coordinated_allocator": coordinated_allocator,
+        "baseline_coordination_variant": baseline.coordination_variant,
+        "coordinated_coordination_variant": coordinated.coordination_variant,
         "baseline": baseline.metrics.to_dict(),
         "coordinated": coordinated.metrics.to_dict(),
     }
@@ -153,12 +209,14 @@ def run_ablation(
         for planner in planners:
             for allocator in allocators:
                 for mode in ["baseline", "coordinated"]:
+                    coordination = _coordination_config("independent" if mode == "baseline" else "full")
                     result = run_simulation(
                         config=config,
                         mode=mode,
                         seed=run_seed,
                         planner_override=planner,
                         allocator_override=allocator,
+                        coordination_override=coordination,
                     )
                     rows.append(
                         {
@@ -169,6 +227,7 @@ def run_ablation(
                             "planner": planner.algorithm,
                             "heuristic_weight": planner.heuristic_weight,
                             "allocator": allocator,
+                            "coordination_variant": result.coordination_variant,
                             **result.metrics.to_dict(),
                         }
                     )
@@ -196,6 +255,7 @@ def _main_suite_rows() -> list[dict]:
     for path_str in scenario_paths(scenarios_for_suite("main")):
         config = load_scenario(path_str)
         for mode in ["baseline", "coordinated"]:
+            coordination = _coordination_config("independent" if mode == "baseline" else "full")
             rows.append(
                 _run_row(
                     suite="main",
@@ -204,6 +264,7 @@ def _main_suite_rows() -> list[dict]:
                     allocator="greedy",
                     mode=mode,
                     seed=config.seed,
+                    coordination=coordination,
                 )
             )
     return rows
@@ -223,6 +284,7 @@ def _allocator_suite_rows() -> list[dict]:
                     allocator=allocator,
                     mode="coordinated",
                     seed=config.seed,
+                    coordination=_coordination_config("full"),
                 )
             )
     return rows
@@ -246,6 +308,35 @@ def _planner_suite_rows() -> list[dict]:
                     allocator="hungarian",
                     mode="coordinated",
                     seed=config.seed,
+                    coordination=_coordination_config("full"),
+                )
+            )
+    return rows
+
+
+def _coordination_suite_rows() -> list[dict]:
+    planner = _planner_config("astar", 1.0)
+    rows: list[dict] = []
+    variants: list[tuple[Mode, CoordinationVariant, AllocationPolicy]] = [
+        ("baseline", "independent", "greedy"),
+        ("baseline_priority", "priority_static", "greedy"),
+        ("coordinated", "vertex_only", "greedy"),
+        ("coordinated", "static_priority", "greedy"),
+        ("coordinated", "full", "greedy"),
+    ]
+
+    for path_str in scenario_paths(scenarios_for_suite("coordination")):
+        config = load_scenario(path_str)
+        for mode, variant, allocator in variants:
+            rows.append(
+                _run_row(
+                    suite="coordination",
+                    scenario_path_str=path_str,
+                    planner=planner,
+                    allocator=allocator,
+                    mode=mode,
+                    seed=config.seed,
+                    coordination=_coordination_config(variant),
                 )
             )
     return rows
@@ -265,6 +356,7 @@ def _robustness_suite_rows(seeds: list[int]) -> list[dict]:
             allocator="hungarian",
             mode="coordinated",
             seed=dynamic_config.seed,
+            coordination=_coordination_config("full"),
         )
     )
 
@@ -278,6 +370,7 @@ def _robustness_suite_rows(seeds: list[int]) -> list[dict]:
                 allocator="hungarian",
                 mode="coordinated",
                 seed=seed,
+                coordination=_coordination_config("full"),
             )
         )
     return rows
@@ -290,6 +383,8 @@ def _suite_rows(suite: PaperSuite, seeds: list[int]) -> list[dict]:
         return _allocator_suite_rows()
     if suite == "planner":
         return _planner_suite_rows()
+    if suite == "coordination":
+        return _coordination_suite_rows()
     if suite == "robustness":
         return _robustness_suite_rows(seeds)
     if suite == "all":
@@ -297,6 +392,7 @@ def _suite_rows(suite: PaperSuite, seeds: list[int]) -> list[dict]:
         rows.extend(_main_suite_rows())
         rows.extend(_allocator_suite_rows())
         rows.extend(_planner_suite_rows())
+        rows.extend(_coordination_suite_rows())
         rows.extend(_robustness_suite_rows(seeds))
         return rows
     raise ValueError(f"Unsupported suite: {suite}")
@@ -376,7 +472,7 @@ def main() -> None:
     parser.add_argument("--scenarios", nargs="*", help="Scenario list for ablation mode")
     parser.add_argument(
         "--mode",
-        choices=["baseline", "coordinated"],
+        choices=["baseline", "baseline_priority", "coordinated"],
         default="coordinated",
         help="Run mode for single execution",
     )
@@ -393,7 +489,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--suite",
-        choices=["main", "allocator", "planner", "robustness", "all"],
+        choices=["main", "allocator", "planner", "coordination", "robustness", "all"],
         default=None,
         help="Run canonical paper benchmark suite",
     )
@@ -484,6 +580,7 @@ def main() -> None:
             output_dir=args.output_dir,
             planner=planner,
             allocator=allocator,
+            coordination=None,
         )
         print(json.dumps(payload, indent=2))
         return

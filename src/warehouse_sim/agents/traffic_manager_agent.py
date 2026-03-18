@@ -1,7 +1,14 @@
 from __future__ import annotations
 
 from warehouse_sim.grid import GridMap
-from warehouse_sim.models import PlanStep, PlannerConfig, PlannerDiagnostics, RobotState, TaskState
+from warehouse_sim.models import (
+    CoordinationConfig,
+    PlanStep,
+    PlannerConfig,
+    PlannerDiagnostics,
+    RobotState,
+    TaskState,
+)
 from warehouse_sim.pathfinding import plan_path_space_time
 from warehouse_sim.reservation import ReservationTable
 
@@ -9,10 +16,17 @@ from warehouse_sim.reservation import ReservationTable
 class TrafficManagerAgent:
     """Prioritized planner with cell-time and edge-time reservations."""
 
-    def __init__(self, grid: GridMap, max_ticks: int, planner: PlannerConfig) -> None:
+    def __init__(
+        self,
+        grid: GridMap,
+        max_ticks: int,
+        planner: PlannerConfig,
+        coordination: CoordinationConfig,
+    ) -> None:
         self.grid = grid
         self.max_ticks = max_ticks
         self.planner = planner
+        self.coordination = coordination
 
     def plan_and_reserve(
         self,
@@ -22,8 +36,10 @@ class TrafficManagerAgent:
         wait_streaks: dict[str, int] | None = None,
         blocked_cells: set[tuple[int, int]] | None = None,
         planner: PlannerConfig | None = None,
+        coordination: CoordinationConfig | None = None,
     ) -> tuple[dict[str, list[PlanStep]], ReservationTable, list[PlannerDiagnostics]]:
-        reservation_table = ReservationTable()
+        coordination_cfg = coordination or self.coordination
+        reservation_table = ReservationTable(edge_conflicts=coordination_cfg.edge_conflicts)
         planned_paths: dict[str, list[PlanStep]] = {}
         diagnostics: list[PlannerDiagnostics] = []
 
@@ -51,18 +67,21 @@ class TrafficManagerAgent:
         }
         active_targets = {target for target in targets.values() if target is not None}
 
-        ordered_robot_ids = sorted(
-            robots,
-            key=lambda rid: self._priority_key(
-                robot=robots[rid],
-                tasks=tasks,
-                blocking_score=blocking_scores.get(rid, 0),
-                wait_streak=streaks.get(rid, 0),
-                tick=tick,
-                total_robots=len(robots),
-                rank=rank_by_robot[rid],
-            ),
-        )
+        if coordination_cfg.dynamic_priority:
+            ordered_robot_ids = sorted(
+                robots,
+                key=lambda rid: self._priority_key(
+                    robot=robots[rid],
+                    tasks=tasks,
+                    blocking_score=blocking_scores.get(rid, 0),
+                    wait_streak=streaks.get(rid, 0),
+                    tick=tick,
+                    total_robots=len(robots),
+                    rank=rank_by_robot[rid],
+                ),
+            )
+        else:
+            ordered_robot_ids = sorted(robots)
 
         for robot_id in ordered_robot_ids:
             robot = robots[robot_id]

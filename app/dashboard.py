@@ -15,7 +15,15 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from warehouse_sim.loader import load_scenario
-from warehouse_sim.models import AllocationPolicy, Mode, PlannerAlgorithm, PlannerConfig, RunResult, SimulationConfig
+from warehouse_sim.models import (
+    AllocationPolicy,
+    CoordinationConfig,
+    Mode,
+    PlannerAlgorithm,
+    PlannerConfig,
+    RunResult,
+    SimulationConfig,
+)
 from warehouse_sim.paper_tables import ALLOCATOR_LABELS, MODE_LABELS, PLANNER_LABELS
 from warehouse_sim.runner import DEFAULT_ROBUSTNESS_SEEDS, run_suite
 from warehouse_sim.scenario_catalog import (
@@ -40,6 +48,7 @@ SUITE_LABELS = {
     "main": "Ana Karşılaştırma",
     "allocator": "Atayıcı Ablation",
     "planner": "Planlayıcı Ablation",
+    "coordination": "Koordinasyon Ablation",
     "robustness": "Robustness / Appendix",
     "all": "Tam Paper Pack",
 }
@@ -479,6 +488,24 @@ def _resolve_figure_path(payload: dict, figure_key: str) -> str | None:
     return None
 
 
+def _coordination_for_mode(mode: Mode) -> CoordinationConfig:
+    if mode == "baseline":
+        return CoordinationConfig(variant="independent")
+    if mode == "baseline_priority":
+        return CoordinationConfig(
+            variant="priority_static",
+            edge_conflicts=True,
+            dynamic_priority=False,
+            micro_replan=False,
+        )
+    return CoordinationConfig(
+        variant="full",
+        edge_conflicts=True,
+        dynamic_priority=True,
+        micro_replan=True,
+    )
+
+
 def _run_demo(mode: Mode | None, scenario_name: str, planner: PlannerConfig, allocator: AllocationPolicy, seed: int, max_ticks: int) -> dict:
     config = replace(
         load_scenario(scenario_path(scenario_name)),
@@ -488,12 +515,15 @@ def _run_demo(mode: Mode | None, scenario_name: str, planner: PlannerConfig, all
         allocator_policy=allocator,
     )
     if mode is None:
+        baseline_coordination = _coordination_for_mode("baseline")
+        coordinated_coordination = _coordination_for_mode("coordinated")
         baseline = run_simulation(
             config=config,
             mode="baseline",
             seed=config.seed,
             planner_override=planner,
             allocator_override=allocator,
+            coordination_override=baseline_coordination,
         )
         coordinated = run_simulation(
             config=config,
@@ -501,6 +531,7 @@ def _run_demo(mode: Mode | None, scenario_name: str, planner: PlannerConfig, all
             seed=config.seed,
             planner_override=planner,
             allocator_override=allocator,
+            coordination_override=coordinated_coordination,
         )
         return {"config": config, "compare": True, "baseline": baseline, "coordinated": coordinated}
 
@@ -510,6 +541,7 @@ def _run_demo(mode: Mode | None, scenario_name: str, planner: PlannerConfig, all
         seed=config.seed,
         planner_override=planner,
         allocator_override=allocator,
+        coordination_override=_coordination_for_mode(mode),
     )
     return {"config": config, "compare": False, "mode": mode, "single": single}
 
@@ -560,7 +592,16 @@ def main() -> None:
             c1, c2, c3, c4, c5 = st.columns(5)
             scenario_name = c1.selectbox("Senaryo", scenario_options, index=default_index)
             if st.session_state.get("demo_single_mode", False):
-                run_mode_label = c2.selectbox("Akış", ["Karşılaştırma", "Tek Koşum - Koordineli", "Tek Koşum - Baseline"], index=0)
+                run_mode_label = c2.selectbox(
+                    "Akış",
+                    [
+                        "Karşılaştırma",
+                        "Tek Koşum - Koordineli",
+                        "Tek Koşum - Baseline",
+                        "Tek Koşum - Öncelikli Baseline",
+                    ],
+                    index=0,
+                )
             else:
                 run_mode_label = c2.selectbox("Akış", ["Karşılaştırma"], index=0)
             planner_label = c3.selectbox("Planlayıcı", list(PLANNER_LABELS.values()), index=0)
@@ -582,6 +623,8 @@ def main() -> None:
                 mode = "coordinated"
             elif run_mode_label == "Tek Koşum - Baseline":
                 mode = "baseline"
+            elif run_mode_label == "Tek Koşum - Öncelikli Baseline":
+                mode = "baseline_priority"
             st.session_state["demo_payload"] = _run_demo(
                 mode=mode,
                 scenario_name=scenario_name,
@@ -652,7 +695,12 @@ def main() -> None:
 
         with st.form("paper_form"):
             c1, c2, c3 = st.columns([2, 2, 2])
-            suite_label = c1.selectbox("Deney paketi", list(SUITE_LABELS.values()), index=4)
+            suite_options = list(SUITE_LABELS.values())
+            suite_label = c1.selectbox(
+                "Deney paketi",
+                suite_options,
+                index=suite_options.index(SUITE_LABELS["all"]),
+            )
             with_latex = c2.checkbox("LaTeX tablolarını üret", value=True)
             with_figures = c3.checkbox("Figür paketini üret", value=True)
             selected_suite = next(key for key, value in SUITE_LABELS.items() if value == suite_label)
@@ -683,6 +731,7 @@ def main() -> None:
             main_table = _resolve_table_path(paper_payload, "main")
             allocator_table = _resolve_table_path(paper_payload, "allocator")
             planner_table = _resolve_table_path(paper_payload, "planner")
+            coordination_table = _resolve_table_path(paper_payload, "coordination")
             robustness_table = _resolve_table_path(paper_payload, "robustness")
 
             if main_table:
@@ -691,6 +740,8 @@ def main() -> None:
                 _render_table("Atayıcı Ablation Tablosu", allocator_table)
             if planner_table:
                 _render_table("Planlayıcı Ablation Tablosu", planner_table)
+            if coordination_table:
+                _render_table("Koordinasyon Ablation Tablosu", coordination_table)
             if robustness_table:
                 with st.expander("Robustness / Appendix Tablosu", expanded=False):
                     _render_table("Robustness Tablosu", robustness_table)

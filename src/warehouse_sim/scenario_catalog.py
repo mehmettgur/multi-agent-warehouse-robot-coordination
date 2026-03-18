@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
-PaperSuite = Literal["main", "allocator", "planner", "robustness", "all"]
+PaperSuite = Literal["main", "allocator", "planner", "coordination", "robustness", "all"]
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCENARIO_DIR = REPO_ROOT / "configs" / "scenarios"
@@ -31,6 +31,7 @@ SUITE_SCENARIOS: dict[str, tuple[str, ...]] = {
         "stochastic_delay",
     ),
     "planner": CORE_SCENARIOS + ("dynamic_obstacle",),
+    "coordination": CORE_SCENARIOS,
     "robustness": (
         "dynamic_obstacle",
         "stochastic_delay",
@@ -47,7 +48,7 @@ def scenario_paths(names: tuple[str, ...] | list[str]) -> list[str]:
 def scenarios_for_suite(suite: PaperSuite) -> tuple[str, ...]:
     if suite == "all":
         seen: list[str] = []
-        for item in ("main", "allocator", "planner", "robustness"):
+        for item in ("main", "allocator", "planner", "coordination", "robustness"):
             for scenario in SUITE_SCENARIOS[item]:
                 if scenario not in seen:
                     seen.append(scenario)

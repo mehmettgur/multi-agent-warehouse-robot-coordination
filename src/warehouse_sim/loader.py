@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from warehouse_sim.models import PlannerConfig, RobotSpec, SimulationConfig, TaskSpec
+from warehouse_sim.models import CoordinationConfig, PlannerConfig, RobotSpec, SimulationConfig, TaskSpec
 
 
 def load_scenario(path: str | Path) -> SimulationConfig:
@@ -34,6 +34,13 @@ def load_scenario(path: str | Path) -> SimulationConfig:
         algorithm=planner_raw.get("algorithm", "astar"),
         heuristic_weight=float(planner_raw.get("heuristic_weight", 1.4)),
     )
+    coordination_raw = data.get("coordination", {})
+    coordination = CoordinationConfig(
+        variant=coordination_raw.get("variant", "full"),
+        edge_conflicts=coordination_raw.get("edge_conflicts", True),
+        dynamic_priority=coordination_raw.get("dynamic_priority", True),
+        micro_replan=coordination_raw.get("micro_replan", True),
+    )
 
     return SimulationConfig(
         name=data["name"],
@@ -48,4 +55,5 @@ def load_scenario(path: str | Path) -> SimulationConfig:
         events=data.get("events", []),
         planner=planner,
         allocator_policy=data.get("allocator_policy", "hungarian"),
+        coordination=coordination,
     )

@@ -38,6 +38,20 @@ def test_planner_suite_contains_three_planners(tmp_path: Path) -> None:
     assert all(row["suite"] == "planner" for row in raw_rows)
 
 
+def test_coordination_suite_contains_expected_variants(tmp_path: Path) -> None:
+    payload = run_suite("coordination", str(tmp_path), with_latex=True)
+    raw_rows = _read_csv(payload["raw_csv"])
+
+    assert {row["coordination_variant"] for row in raw_rows} == {
+        "independent",
+        "priority_static",
+        "vertex_only",
+        "static_priority",
+        "full",
+    }
+    assert all(row["suite"] == "coordination" for row in raw_rows)
+
+
 def test_robustness_suite_aggregates_expected_scenarios(tmp_path: Path) -> None:
     payload = run_suite("robustness", str(tmp_path), with_latex=True)
     robustness_csv = next(
@@ -52,7 +66,7 @@ def test_robustness_suite_aggregates_expected_scenarios(tmp_path: Path) -> None:
 def test_all_suite_generates_figures_and_all_tables(tmp_path: Path) -> None:
     payload = run_suite("all", str(tmp_path), with_latex=True, with_figures=True)
 
-    assert set(payload["tables"]) == {"main", "allocator", "planner", "robustness"}
+    assert set(payload["tables"]) == {"main", "allocator", "planner", "coordination", "robustness"}
     assert {"swap_demo", "high_load_compare", "dynamic_obstacle", "manifest"} <= set(payload["figures"])
 
     for figure_group in payload["figures"].values():

@@ -4,17 +4,34 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 Position = tuple[int, int]
-Mode = Literal["baseline", "coordinated"]
+Mode = Literal["baseline", "baseline_priority", "coordinated"]
 Phase = Literal["to_pickup", "to_dropoff"]
 ActionType = Literal["MOVE", "WAIT"]
 PlannerAlgorithm = Literal["astar", "dijkstra", "weighted_astar"]
 AllocationPolicy = Literal["greedy", "hungarian"]
+PriorityStrategy = Literal["static", "dynamic"]
+CoordinationVariant = Literal[
+    "independent",
+    "priority_static",
+    "vertex_only",
+    "static_priority",
+    "no_micro_replan",
+    "full",
+]
 
 
 @dataclass(frozen=True)
 class PlannerConfig:
     algorithm: PlannerAlgorithm = "astar"
     heuristic_weight: float = 1.4
+
+
+@dataclass(frozen=True)
+class CoordinationConfig:
+    variant: CoordinationVariant = "full"
+    edge_conflicts: bool = True
+    dynamic_priority: bool = True
+    micro_replan: bool = True
 
 
 @dataclass(frozen=True)
@@ -123,6 +140,7 @@ class SimulationConfig:
     events: list[dict] = field(default_factory=list)
     planner: PlannerConfig = field(default_factory=PlannerConfig)
     allocator_policy: AllocationPolicy = "greedy"
+    coordination: CoordinationConfig = field(default_factory=CoordinationConfig)
 
 
 @dataclass
@@ -207,6 +225,7 @@ class RunResult:
     planner_algorithm: PlannerAlgorithm
     heuristic_weight: float
     allocator_policy: AllocationPolicy
+    coordination_variant: CoordinationVariant
 
     def to_dict(self) -> dict:
         return {
@@ -216,6 +235,7 @@ class RunResult:
             "planner_algorithm": self.planner_algorithm,
             "heuristic_weight": self.heuristic_weight,
             "allocator_policy": self.allocator_policy,
+            "coordination_variant": self.coordination_variant,
             "metrics": self.metrics.to_dict(),
             "timeline": [snapshot.to_dict() for snapshot in self.timeline],
         }

@@ -4,6 +4,7 @@ from warehouse_sim.agents.coordinator_agent import CoordinatorAgent
 from warehouse_sim.grid import GridMap
 from warehouse_sim.models import (
     AllocationPolicy,
+    CoordinationConfig,
     Mode,
     PlannerConfig,
     RobotState,
@@ -19,13 +20,15 @@ def run_simulation(
     seed: int | None = None,
     planner_override: PlannerConfig | None = None,
     allocator_override: AllocationPolicy | None = None,
+    coordination_override: CoordinationConfig | None = None,
 ) -> RunResult:
     run_seed = config.seed if seed is None else seed
     planner = planner_override or config.planner
+    coordination = coordination_override or config.coordination
 
     if allocator_override is not None:
         allocator_policy = allocator_override
-    elif mode == "baseline":
+    elif mode in {"baseline", "baseline_priority"}:
         allocator_policy = "greedy"
     else:
         allocator_policy = config.allocator_policy
@@ -50,6 +53,7 @@ def run_simulation(
         max_ticks=config.max_ticks,
         planner=planner,
         allocator_policy=allocator_policy,
+        coordination=coordination,
         events=config.events,
     )
     return coordinator.run()
