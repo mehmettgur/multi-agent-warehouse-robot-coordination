@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
-from collections import Counter
 from dataclasses import replace
-from datetime import datetime, timezone
 from html import escape
 from pathlib import Path
 import sys
@@ -17,20 +15,17 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from warehouse_sim.loader import load_scenario
-from warehouse_sim.models import (
-    AllocationPolicy,
-    Mode,
-    PlannerAlgorithm,
-    PlannerConfig,
-    RobotSpec,
-    RunResult,
-    SimulationConfig,
-    TaskSpec,
+from warehouse_sim.models import AllocationPolicy, Mode, PlannerAlgorithm, PlannerConfig, RunResult, SimulationConfig
+from warehouse_sim.paper_tables import ALLOCATOR_LABELS, MODE_LABELS, PLANNER_LABELS
+from warehouse_sim.runner import DEFAULT_ROBUSTNESS_SEEDS, run_suite
+from warehouse_sim.scenario_catalog import (
+    APPENDIX_SCENARIOS,
+    CORE_SCENARIOS,
+    LEGACY_SCENARIOS,
+    scenario_path,
 )
 from warehouse_sim.simulator import run_simulation
 
-RESULTS_DIR = ROOT / "results"
-SCENARIO_DIR = ROOT / "configs" / "scenarios"
 ROBOT_COLORS = [
     "#0ea5e9",
     "#f97316",
@@ -41,36 +36,30 @@ ROBOT_COLORS = [
     "#14b8a6",
     "#fb7185",
 ]
-
-METRIC_DOCS = {
-    "makespan": "Tüm görevlerin tamamlanması için geçen toplam tik. Düşük olması daha iyidir.",
-    "total_path_length": "Robotların toplam MOVE adım sayısıdır.",
-    "avg_task_completion_time": "Görevlerin release->completion ortalama süresidir.",
-    "wait_count": "Toplam WAIT adımıdır.",
-    "collision_count": "Çakışma olay sayısıdır. Koordineli mod hedefi 0'dır.",
-    "throughput": "Birim zamanda tamamlanan görev sayısıdır.",
-    "fairness_task_std": "Robotlar arası görev dağılımının standart sapmasıdır.",
-    "planner_expanded_nodes_total": "Planlayıcı tarafında genişletilen toplam düğüm sayısıdır.",
+SUITE_LABELS = {
+    "main": "Ana Karşılaştırma",
+    "allocator": "Atayıcı Ablation",
+    "planner": "Planlayıcı Ablation",
+    "robustness": "Robustness / Appendix",
+    "all": "Tam Paper Pack",
 }
-
-PLANNER_LABELS: dict[PlannerAlgorithm, str] = {
-    "astar": "A*",
-    "dijkstra": "Dijkstra",
-    "weighted_astar": "A* (Ağırlıklı)",
-}
-PLANNER_FROM_LABEL: dict[str, PlannerAlgorithm] = {
-    value: key for key, value in PLANNER_LABELS.items()
-}
-ALLOCATOR_LABELS: dict[AllocationPolicy, str] = {
-    "hungarian": "Hungarian",
-    "greedy": "Greedy",
-}
-ALLOCATOR_FROM_LABEL: dict[str, AllocationPolicy] = {
-    value: key for key, value in ALLOCATOR_LABELS.items()
-}
-MODE_LABELS: dict[Mode, str] = {
-    "coordinated": "Koordineli",
-    "baseline": "Baseline",
+PRIMARY_METRICS = [
+    ("Tamamlama", "completed_tasks"),
+    ("Çakışma", "collision_count"),
+    ("Makespan", "makespan"),
+    ("Throughput", "throughput"),
+]
+SECONDARY_METRICS = [
+    ("Toplam Yol", "total_path_length"),
+    ("Bekleme", "wait_count"),
+    ("Ort. Görev Süresi", "avg_task_completion_time"),
+    ("Adillik Std", "fairness_task_std"),
+]
+METRIC_EXPLANATIONS = {
+    "Tamamlama": "Görevlerin kaçının tamamlandığını gösterir. Yüksek olması daha iyidir.",
+    "Çakışma": "Aynı hücreye girme veya swap çatışması sayısıdır. Koordineli mod hedefi 0'dır.",
+    "Makespan": "Tüm görevlerin bitmesi için geçen toplam tik sayısıdır. Düşük olması daha iyidir.",
+    "Throughput": "Birim zamanda tamamlanan görev sayısıdır. Yüksek olması daha iyidir.",
 }
 
 
@@ -78,18 +67,44 @@ def _inject_styles() -> None:
     st.markdown(
         """
         <style>
+            .block-container { padding-top: 1.4rem; padding-bottom: 2rem; }
+            .hero {
+                border: 1px solid #dbe4ef;
+                border-radius: 18px;
+                padding: 1.1rem 1.2rem;
+                background: linear-gradient(135deg, #f8fbff 0%, #eef6ff 100%);
+                margin-bottom: 1rem;
+            }
+            .hero h1 {
+                font-size: 1.9rem;
+                margin: 0 0 0.25rem 0;
+                color: #0f172a;
+            }
+            .hero p {
+                margin: 0;
+                color: #475569;
+                font-size: 0.98rem;
+            }
+            .metric-note {
+                border: 1px solid #dbe4ef;
+                background: #f8fafc;
+                border-radius: 14px;
+                padding: 0.9rem 1rem;
+                margin: 0.8rem 0 1rem 0;
+            }
+            .metric-note strong { color: #0f172a; }
             .sim-panel {
                 border: 1px solid #dbe4ef;
-                border-radius: 14px;
-                padding: 0.9rem;
-                background: linear-gradient(180deg, #f8fbff 0%, #f2f7ff 100%);
-                margin-bottom: 0.8rem;
+                border-radius: 16px;
+                padding: 0.95rem;
+                background: #ffffff;
+                margin-bottom: 0.85rem;
             }
             .sim-grid-wrap {
                 overflow-x: auto;
-                padding: 0.6rem;
+                padding: 0.65rem;
                 border: 1px solid #dce5f2;
-                border-radius: 12px;
+                border-radius: 14px;
                 background: #f8fafc;
             }
             .sim-grid {
@@ -115,7 +130,7 @@ def _inject_styles() -> None:
             .sim-cell.obstacle { background: #374151; border-color: #374151; color: #f8fafc; }
             .sim-cell.pickup { background: #ecfeff; border-color: #22d3ee; color: #155e75; }
             .sim-cell.dropoff { background: #fff7ed; border-color: #fb923c; color: #9a3412; }
-            .sim-cell.trail-1 { box-shadow: inset 0 0 0 999px rgba(59, 130, 246, 0.09); }
+            .sim-cell.trail-1 { box-shadow: inset 0 0 0 999px rgba(59, 130, 246, 0.08); }
             .sim-cell.trail-2 { box-shadow: inset 0 0 0 999px rgba(59, 130, 246, 0.16); }
             .sim-cell.trail-3 { box-shadow: inset 0 0 0 999px rgba(59, 130, 246, 0.24); }
             .robot-chip {
@@ -158,49 +173,13 @@ def _inject_styles() -> None:
     )
 
 
-def _load_scenario_data(path: Path) -> dict:
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
-def _config_from_data(data: dict) -> SimulationConfig:
-    obstacles = {tuple(cell) for cell in data["grid"]["obstacles"]}
-    stations = {
-        key: [tuple(cell) for cell in value]
-        for key, value in data.get("stations", {}).items()
-    }
-    robots = [
-        RobotSpec(robot_id=robot["id"], start=tuple(robot["start"]))
-        for robot in data["robots"]
-    ]
-    tasks = [
-        TaskSpec(
-            task_id=task["id"],
-            pickup=tuple(task["pickup"]),
-            dropoff=tuple(task["dropoff"]),
-            release_tick=task.get("release_tick", 0),
-        )
-        for task in data["tasks"]
-    ]
-    planner_raw = data.get("planner", {})
-    planner = PlannerConfig(
-        algorithm=planner_raw.get("algorithm", "astar"),
-        heuristic_weight=float(planner_raw.get("heuristic_weight", 1.4)),
-    )
-
-    return SimulationConfig(
-        name=data["name"],
-        seed=data.get("seed", 0),
-        width=data["grid"]["width"],
-        height=data["grid"]["height"],
-        obstacles=obstacles,
-        stations=stations,
-        robots=robots,
-        tasks=tasks,
-        max_ticks=data.get("simulation", {}).get("max_ticks", 200),
-        events=data.get("events", []),
-        planner=planner,
-        allocator_policy=data.get("allocator_policy", "hungarian"),
-    )
+def _scenario_names(include_appendix: bool, include_legacy: bool) -> list[str]:
+    names = list(CORE_SCENARIOS)
+    if include_appendix:
+        names.extend(APPENDIX_SCENARIOS)
+    if include_legacy:
+        names.extend(LEGACY_SCENARIOS)
+    return names
 
 
 def _planner_label(algorithm: PlannerAlgorithm) -> str:
@@ -215,129 +194,46 @@ def _mode_label(mode: Mode) -> str:
     return MODE_LABELS.get(mode, mode)
 
 
-def _build_scenario_label_map(paths: list[Path]) -> dict[str, Path]:
-    scenario_entries: list[tuple[str, Path]] = []
-    for path in sorted(paths):
-        try:
-            data = _load_scenario_data(path)
-            scenario_name = str(data.get("name", path.stem))
-        except Exception:  # noqa: BLE001
-            scenario_name = path.stem
-        scenario_entries.append((scenario_name, path))
-
-    name_counts = Counter(name for name, _ in scenario_entries)
-    label_map: dict[str, Path] = {}
-    for name, path in scenario_entries:
-        label = name
-        if name_counts[name] > 1:
-            label = f"{name} ({path.stem})"
-        label_map[label] = path
-    return label_map
+def _read_csv_rows(path: str | Path) -> list[dict[str, str]]:
+    with Path(path).open(newline="", encoding="utf-8-sig") as handle:
+        return list(csv.DictReader(handle))
 
 
-def _to_float(value: object) -> float:
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return 0.0
-
-
-def _to_int(value: object) -> int:
-    return int(round(_to_float(value)))
-
-
-def _build_paper_tables(rows: list[dict]) -> tuple[list[dict], list[dict]]:
-    main_rows: list[dict] = []
-    appendix_rows: list[dict] = []
-
-    for row in rows:
-        completed = _to_int(row.get("completed_tasks"))
-        total = max(1, _to_int(row.get("total_tasks")))
-        completion_ratio = completed / total
-
-        planner_algo = str(row.get("planner", "astar"))
-        allocator_name = str(row.get("allocator", "greedy"))
-        mode_name = str(row.get("mode", "coordinated"))
-
-        planner_label = _planner_label(planner_algo) if planner_algo in PLANNER_LABELS else planner_algo
-        allocator_label = _allocator_label(allocator_name) if allocator_name in ALLOCATOR_LABELS else allocator_name
-        mode_label = _mode_label(mode_name) if mode_name in MODE_LABELS else mode_name
-
-        main_rows.append(
-            {
-                "Senaryo": row.get("scenario", ""),
-                "Mod": mode_label,
-                "Planlayıcı": planner_label,
-                "Atayıcı": allocator_label,
-                "Tamamlama Oranı": f"{completed}/{total} (%{completion_ratio * 100:.1f})",
-                "Çakışma": _to_int(row.get("collision_count")),
-                "Makespan": _to_int(row.get("makespan")),
-                "Throughput": round(_to_float(row.get("throughput")), 4),
-                "Ortalama Görev Süresi": round(_to_float(row.get("avg_task_completion_time")), 3),
-                "Bekleme": _to_int(row.get("wait_count")),
-            }
-        )
-
-        appendix_rows.append(
-            {
-                "Senaryo": row.get("scenario", ""),
-                "Mod": mode_label,
-                "Planlayıcı": planner_label,
-                "Atayıcı": allocator_label,
-                "Genişletilen Düğüm": _to_int(row.get("planner_expanded_nodes_total")),
-                "Planlama Süresi (ms)": round(_to_float(row.get("planner_time_ms_total")), 3),
-                "Plan Yol Maliyeti": _to_int(row.get("planner_path_cost_total")),
-                "Adillik Std": round(_to_float(row.get("fairness_task_std")), 4),
-                "Adillik CV": round(_to_float(row.get("fairness_task_cv")), 4),
-                "Gecikme Olayı": _to_int(row.get("delay_event_count")),
-                "Dinamik Blok Replan": _to_int(row.get("dynamic_block_replans")),
-            }
-        )
-
-    return main_rows, appendix_rows
-
-
-def _save_paper_tables(main_rows: list[dict], appendix_rows: list[dict]) -> list[str]:
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    main_path = RESULTS_DIR / f"paper_main_table_{timestamp}.csv"
-    appendix_path = RESULTS_DIR / f"paper_appendix_table_{timestamp}.csv"
-    _write_csv(main_path, main_rows)
-    _write_csv(appendix_path, appendix_rows)
-    return [str(main_path), str(appendix_path)]
-
-
-def _write_json(path: Path, payload: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-
-
-def _write_csv(path: Path, rows: list[dict]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if not rows:
-        return
-    fields = list(rows[0].keys())
-    with path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fields)
-        writer.writeheader()
-        writer.writerows(rows)
-
-
-def _format_ratio(completed: int, total: int) -> str:
-    if total == 0:
+def _format_completion(metrics: dict) -> str:
+    completed = int(metrics.get("completed_tasks", 0))
+    total = int(metrics.get("total_tasks", 0))
+    if total <= 0:
         return "0/0"
-    percent = (completed / total) * 100
-    return f"{completed}/{total} (%{percent:.1f})"
+    return f"{completed}/{total}"
 
 
-def _render_config_overview(
-    config: SimulationConfig,
-    run_type: str,
-    mode: Mode,
-    planner: PlannerConfig,
-    allocator: AllocationPolicy,
-) -> None:
+def _metric_value(label: str, metrics: dict) -> str:
+    if label == "Tamamlama":
+        return _format_completion(metrics)
+    value = metrics.get({
+        "Çakışma": "collision_count",
+        "Makespan": "makespan",
+        "Throughput": "throughput",
+        "Toplam Yol": "total_path_length",
+        "Bekleme": "wait_count",
+        "Ort. Görev Süresi": "avg_task_completion_time",
+        "Adillik Std": "fairness_task_std",
+    }[label], 0)
+    if isinstance(value, float):
+        return f"{value:.4f}".rstrip("0").rstrip(".")
+    return str(value)
+
+
+def _render_metric_explanations() -> None:
+    parts = ["<div class='metric-note'><strong>Ana metrikler</strong><br>"]
+    for title, text in METRIC_EXPLANATIONS.items():
+        parts.append(f"<div><strong>{escape(title)}:</strong> {escape(text)}</div>")
+    parts.append("</div>")
+    st.markdown("".join(parts), unsafe_allow_html=True)
+
+
+def _render_run_overview(config: SimulationConfig, planner: PlannerConfig, allocator: AllocationPolicy, run_mode: str) -> None:
     st.markdown('<div class="sim-panel">', unsafe_allow_html=True)
-    st.markdown("### Senaryo Özeti")
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Senaryo", config.name)
     c2.metric("Grid", f"{config.width}x{config.height}")
@@ -347,8 +243,7 @@ def _render_config_overview(
     st.caption(
         " | ".join(
             [
-                f"Çalışma tipi: {run_type}",
-                f"Mod: {_mode_label(mode) if run_type == 'Tek Koşum' else 'Baseline + Koordineli'}",
+                f"Akış: {run_mode}",
                 f"Planlayıcı: {_planner_label(planner.algorithm)}",
                 f"w={planner.heuristic_weight:.1f}",
                 f"Atayıcı: {_allocator_label(allocator)}",
@@ -359,49 +254,37 @@ def _render_config_overview(
     st.markdown("</div>", unsafe_allow_html=True)
 
 
-def _render_metric_cards(metrics: dict, title: str) -> None:
-    st.markdown(f"### {title}")
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric(
-        "Tamamlanan Görev",
-        _format_ratio(metrics["completed_tasks"], metrics["total_tasks"]),
-    )
-    c2.metric("Çakışma", str(metrics["collision_count"]))
-    c3.metric("Makespan", str(metrics["makespan"]))
-    c4.metric("Throughput", str(metrics.get("throughput", 0.0)))
+def _render_primary_cards(metrics: dict, title: str) -> None:
+    st.markdown(f"#### {title}")
+    cols = st.columns(4)
+    labels = [item[0] for item in PRIMARY_METRICS]
+    for col, label in zip(cols, labels):
+        col.metric(label, _metric_value(label, metrics))
 
-    c5, c6, c7, c8 = st.columns(4)
-    c5.metric("Toplam Yol", str(metrics["total_path_length"]))
-    c6.metric("Ort. Görev Süresi", str(metrics["avg_task_completion_time"]))
-    c7.metric("Bekleme", str(metrics["wait_count"]))
-    c8.metric("Adillik Std.", str(metrics.get("fairness_task_std", 0.0)))
+
+def _render_secondary_cards(metrics: dict) -> None:
+    cols = st.columns(4)
+    for col, (label, _) in zip(cols, SECONDARY_METRICS):
+        col.metric(label, _metric_value(label, metrics))
 
 
 def _render_comparison_cards(baseline: dict, coordinated: dict) -> None:
-    st.markdown("### Kıyas Özeti (Koordineli - Baseline)")
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric(
-        "Tamamlanan Görev",
-        _format_ratio(coordinated["completed_tasks"], coordinated["total_tasks"]),
-        delta=f"{coordinated['completed_tasks'] - baseline['completed_tasks']:+}",
-    )
-    c2.metric(
-        "Çakışma",
-        str(coordinated["collision_count"]),
-        delta=f"{coordinated['collision_count'] - baseline['collision_count']:+}",
-        delta_color="inverse",
-    )
-    c3.metric(
-        "Makespan",
-        str(coordinated["makespan"]),
-        delta=f"{coordinated['makespan'] - baseline['makespan']:+}",
-        delta_color="inverse",
-    )
-    c4.metric(
-        "Throughput",
-        str(coordinated.get("throughput", 0.0)),
-        delta=f"{coordinated.get('throughput', 0.0) - baseline.get('throughput', 0.0):+.4f}",
-    )
+    st.markdown("### Kıyas Özeti")
+    cols = st.columns(4)
+    for idx, (label, _) in enumerate(PRIMARY_METRICS):
+        baseline_value = _metric_value(label, baseline)
+        coordinated_value = _metric_value(label, coordinated)
+        delta = None
+        if label == "Tamamlama":
+            delta = f"{int(coordinated.get('completed_tasks', 0)) - int(baseline.get('completed_tasks', 0)):+}"
+        elif label == "Çakışma":
+            delta = f"{int(coordinated.get('collision_count', 0)) - int(baseline.get('collision_count', 0)):+}"
+        elif label == "Makespan":
+            delta = f"{int(coordinated.get('makespan', 0)) - int(baseline.get('makespan', 0)):+}"
+        elif label == "Throughput":
+            delta = f"{float(coordinated.get('throughput', 0.0)) - float(baseline.get('throughput', 0.0)):+.4f}"
+        cols[idx].metric(label, coordinated_value, delta=delta)
+    st.caption("Kart değerleri koordineli modu gösterir; delta sütunu baseline farkını verir.")
 
 
 def _build_trail_map(timeline: list, tick_index: int, window: int = 6) -> dict[tuple[int, int], int]:
@@ -440,7 +323,7 @@ def _heat_style(cell: tuple[int, int], heatmap: dict[tuple[int, int], int]) -> s
     if cell not in heatmap:
         return ""
     max_count = max(heatmap.values()) if heatmap else 1
-    alpha = min(0.45, (heatmap[cell] / max_count) * 0.45)
+    alpha = min(0.42, (heatmap[cell] / max_count) * 0.42)
     return f"box-shadow: inset 0 0 0 999px rgba(239, 68, 68, {alpha});"
 
 
@@ -452,9 +335,7 @@ def _render_grid_html(
     heatmap: dict[tuple[int, int], int],
     show_heatmap: bool,
 ) -> str:
-    position_to_robot = {
-        (pos[0], pos[1]): rid for rid, pos in snapshot["robot_positions"].items()
-    }
+    position_to_robot = {(pos[0], pos[1]): rid for rid, pos in snapshot["robot_positions"].items()}
     blocked_now = {tuple(cell) for cell in snapshot.get("blocked_cells", [])}
 
     cells: list[str] = []
@@ -466,15 +347,15 @@ def _render_grid_html(
             trail_level = min(3, trail_map.get((x, y), 0))
             trail_cls = f"trail-{trail_level}" if trail_level > 0 and cls != "obstacle" else ""
             class_name = " ".join(part for part in ["sim-cell", cls, trail_cls] if part)
-
             heat_style = _heat_style((x, y), heatmap) if show_heatmap and cls != "obstacle" else ""
             style_attr = f" style='{heat_style}'" if heat_style else ""
-
             robot_id = position_to_robot.get((x, y))
+
             if robot_id is not None:
-                color = robot_color_map[robot_id]
-                label = escape(robot_id)
-                content = f"<span class='robot-chip' style='background:{color};'>{label}</span>"
+                content = (
+                    f"<span class='robot-chip' style='background:{robot_color_map[robot_id]};'>"
+                    f"{escape(robot_id)}</span>"
+                )
             elif cls == "pickup":
                 content = "P"
             elif cls == "dropoff":
@@ -487,18 +368,17 @@ def _render_grid_html(
             cells.append(f"<div class='{class_name}'{style_attr}>{content}</div>")
 
     return (
-        f"<div class='sim-grid-wrap'><div class='sim-grid' "
-        f"style='grid-template-columns: repeat({config.width}, 32px);'>{''.join(cells)}</div></div>"
+        f"<div class='sim-grid-wrap'><div class='sim-grid' style='grid-template-columns: repeat({config.width}, 32px);'>"
+        f"{''.join(cells)}</div></div>"
     )
 
 
 def _render_robot_legend(robot_ids: list[str], robot_color_map: dict[str, str]) -> None:
     parts = ["<div class='legend'>"]
     for rid in robot_ids:
-        color = robot_color_map[rid]
         parts.append(
             "<span class='legend-item'>"
-            f"<span class='legend-swatch' style='background:{color};'></span>{escape(rid)}"
+            f"<span class='legend-swatch' style='background:{robot_color_map[rid]};'></span>{escape(rid)}"
             "</span>"
         )
     parts.append("</div>")
@@ -534,37 +414,21 @@ def _replay_controls(key_prefix: str, timeline_len: int, step_size: int) -> int:
     return slider_tick
 
 
-def _render_replay(
-    result: RunResult,
-    config: SimulationConfig,
-    key_prefix: str,
-    title: str,
-    show_heatmap: bool,
-    step_size: int,
-) -> None:
-    st.markdown(f"### {title}")
+def _render_replay(result: RunResult, config: SimulationConfig, key_prefix: str, title: str, show_heatmap: bool, step_size: int) -> None:
+    st.markdown(f"#### {title}")
     if not result.timeline:
         st.info("Zaman çizelgesi oluşmadı.")
         return
 
-    tick_index = _replay_controls(
-        key_prefix=key_prefix,
-        timeline_len=len(result.timeline),
-        step_size=step_size,
-    )
+    tick_index = _replay_controls(key_prefix=key_prefix, timeline_len=len(result.timeline), step_size=step_size)
     snapshot = result.timeline[tick_index].to_dict()
-
     robot_ids = sorted(snapshot["robot_positions"].keys())
-    robot_color_map = {
-        rid: ROBOT_COLORS[idx % len(ROBOT_COLORS)] for idx, rid in enumerate(robot_ids)
-    }
-
+    robot_color_map = {rid: ROBOT_COLORS[idx % len(ROBOT_COLORS)] for idx, rid in enumerate(robot_ids)}
     trail_map = _build_trail_map(result.timeline, tick_index=tick_index)
     heatmap = _parse_heatmap(result.metrics.to_dict())
 
     st.caption(
-        f"Tick {snapshot['tick']} | Tamamlanan görev: {snapshot['completed_tasks']} | "
-        f"Bu tikte çakışma: {snapshot['collision_events']}"
+        f"Tick {snapshot['tick']} | Tamamlanan görev: {snapshot['completed_tasks']} | Bu tikte çakışma: {snapshot['collision_events']}"
     )
     st.markdown(
         _render_grid_html(
@@ -580,421 +444,273 @@ def _render_replay(
     _render_robot_legend(robot_ids, robot_color_map)
 
 
-def _render_metric_guide() -> None:
-    with st.expander("Metrikler ne anlama geliyor?", expanded=False):
-        st.markdown("\n".join([f"- `{k}`: {v}" for k, v in METRIC_DOCS.items()]))
+def _render_table(title: str, path: str | None) -> None:
+    if not path:
+        return
+    rows = _read_csv_rows(path)
+    st.markdown(f"### {title}")
+    st.dataframe(rows, width="stretch")
 
 
-def _save_result_files(prefix: str, payload: dict, rows: list[dict] | None = None) -> list[str]:
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    json_path = RESULTS_DIR / f"{prefix}_{timestamp}.json"
-    _write_json(json_path, payload)
-    saved = [str(json_path)]
-
-    if rows:
-        csv_path = RESULTS_DIR / f"{prefix}_{timestamp}.csv"
-        _write_csv(csv_path, rows)
-        saved.append(str(csv_path))
-
-    return saved
+def _render_svg_preview(title: str, path: str | None) -> None:
+    if not path:
+        return
+    svg_path = Path(path)
+    st.markdown(f"### {title}")
+    if svg_path.suffix.lower() == ".svg":
+        st.image(str(svg_path), width="stretch")
+    else:
+        st.image(str(svg_path), width="stretch")
+    st.caption(str(svg_path))
 
 
-def _run_ablation(
-    scenario_paths: list[str],
-    seed_override: int | None,
-    planners: list[PlannerConfig],
-    allocators: list[AllocationPolicy],
-    modes: list[Mode],
-) -> list[dict]:
-    rows: list[dict] = []
-
-    for scenario_path in scenario_paths:
-        config = load_scenario(scenario_path)
-        use_seed = config.seed if seed_override is None else seed_override
-
-        for planner in planners:
-            for allocator in allocators:
-                for mode in modes:
-                    result = run_simulation(
-                        config=config,
-                        mode=mode,
-                        seed=use_seed,
-                        planner_override=planner,
-                        allocator_override=allocator,
-                    )
-                    rows.append(
-                        {
-                            "scenario": config.name,
-                            "scenario_file": Path(scenario_path).name,
-                            "seed": use_seed,
-                            "mode": mode,
-                            "planner": planner.algorithm,
-                            "heuristic_weight": planner.heuristic_weight,
-                            "allocator": allocator,
-                            **result.metrics.to_dict(),
-                        }
-                    )
-    return rows
+def _resolve_table_path(payload: dict, suite_key: str, preferred_suffix: str = ".csv") -> str | None:
+    files = payload.get("tables", {}).get(suite_key, [])
+    for file_path in files:
+        if file_path.endswith(preferred_suffix):
+            return file_path
+    return None
 
 
-def _show_editor(selected_path: Path) -> None:
-    st.subheader("Senaryo Düzenleyici (Opsiyonel)")
-    st.caption("Yalnızca ileri düzey ihtiyaçlar için.")
+def _resolve_figure_path(payload: dict, figure_key: str) -> str | None:
+    files = payload.get("figures", {}).get(figure_key, [])
+    for file_path in files:
+        if file_path.endswith(".svg") or file_path.endswith(".png"):
+            return file_path
+    return None
 
-    with st.expander("JSON Düzenleyici", expanded=False):
-        st.text_area(
-            "Senaryo JSON",
-            key="scenario_json_text",
-            height=420,
-            label_visibility="collapsed",
+
+def _run_demo(mode: Mode | None, scenario_name: str, planner: PlannerConfig, allocator: AllocationPolicy, seed: int, max_ticks: int) -> dict:
+    config = replace(
+        load_scenario(scenario_path(scenario_name)),
+        seed=seed,
+        max_ticks=max_ticks,
+        planner=planner,
+        allocator_policy=allocator,
+    )
+    if mode is None:
+        baseline = run_simulation(
+            config=config,
+            mode="baseline",
+            seed=config.seed,
+            planner_override=planner,
+            allocator_override=allocator,
         )
+        coordinated = run_simulation(
+            config=config,
+            mode="coordinated",
+            seed=config.seed,
+            planner_override=planner,
+            allocator_override=allocator,
+        )
+        return {"config": config, "compare": True, "baseline": baseline, "coordinated": coordinated}
 
-        c1, c2 = st.columns(2)
-        with c1:
-            if st.button("JSON Doğrula"):
-                try:
-                    parsed = json.loads(st.session_state["scenario_json_text"])
-                    preview = _config_from_data(parsed)
-                    st.success(
-                        f"Geçerli: {preview.name} | grid={preview.width}x{preview.height} | "
-                        f"robot={len(preview.robots)} | görev={len(preview.tasks)}"
-                    )
-                except Exception as exc:  # noqa: BLE001
-                    st.error(f"Geçersiz JSON: {exc}")
+    single = run_simulation(
+        config=config,
+        mode=mode,
+        seed=config.seed,
+        planner_override=planner,
+        allocator_override=allocator,
+    )
+    return {"config": config, "compare": False, "mode": mode, "single": single}
 
-        with c2:
-            save_name = st.text_input(
-                "Dosya adı",
-                value=selected_path.name,
-                key="save_scenario_name",
-            )
-            if st.button("Senaryoyu Kaydet"):
-                try:
-                    parsed = json.loads(st.session_state["scenario_json_text"])
-                    target_name = save_name if save_name.endswith(".json") else f"{save_name}.json"
-                    target = SCENARIO_DIR / Path(target_name).name
-                    target.write_text(json.dumps(parsed, indent=2), encoding="utf-8")
-                    st.success(f"Kaydedildi: {target}")
-                except Exception as exc:  # noqa: BLE001
-                    st.error(f"Kaydetme hatası: {exc}")
+
+def _paper_pack_summary(payload: dict) -> None:
+    st.success(
+        " | ".join(
+            [
+                f"Suite: {SUITE_LABELS[payload['suite']]}",
+                f"Ham CSV: {payload['raw_csv']}",
+                f"Satır: {payload['num_rows']}",
+            ]
+        )
+    )
 
 
 def main() -> None:
     st.set_page_config(page_title="Warehouse Robot Coordination", layout="wide")
     _inject_styles()
 
-    st.title("Multi-Agent Depo Robot Koordinasyonu")
-    st.caption("Ablation analizi, sade metrikler ve gelişmiş görselleştirme")
-
-    scenario_paths = sorted(SCENARIO_DIR.glob("*.json"))
-    if not scenario_paths:
-        st.error("`configs/scenarios` altında senaryo dosyası bulunamadı.")
-        return
-    scenario_label_map = _build_scenario_label_map(scenario_paths)
-    scenario_labels = list(scenario_label_map.keys())
-
-    st.sidebar.subheader("Çalıştırma Ayarları")
-    selected_scenario_label = st.sidebar.selectbox("Senaryo", scenario_labels)
-    selected_path = scenario_label_map[selected_scenario_label]
-    base_data = _load_scenario_data(selected_path)
-
-    if st.session_state.get("selected_scenario") != str(selected_path):
-        st.session_state["selected_scenario"] = str(selected_path)
-        st.session_state["scenario_json_text"] = json.dumps(base_data, indent=2)
-
-    run_type = st.sidebar.radio(
-        "Çalışma Tipi",
-        ["Tek Koşum", "Karşılaştırma (Baseline vs Koordineli)"],
-        index=1,
-    )
-    mode: Mode = "coordinated"
-    if run_type == "Tek Koşum":
-        mode_label = st.sidebar.selectbox("Mod", ["Koordineli", "Baseline"])
-        mode = "coordinated" if mode_label == "Koordineli" else "baseline"
-
-    planner_ui_label = st.sidebar.selectbox(
-        "Planlayıcı",
-        [_planner_label("astar"), _planner_label("dijkstra"), _planner_label("weighted_astar")],
-    )
-    planner_algorithm: PlannerAlgorithm = PLANNER_FROM_LABEL[planner_ui_label]
-    heuristic_weight = 1.0
-    if planner_algorithm == "weighted_astar":
-        heuristic_weight = st.sidebar.slider("A* ağırlık (w)", 1.0, 3.0, 1.4, 0.1)
-
-    allocator_ui_label = st.sidebar.selectbox(
-        "Atayıcı",
-        [_allocator_label("hungarian"), _allocator_label("greedy")],
-    )
-    allocator_policy: AllocationPolicy = ALLOCATOR_FROM_LABEL[allocator_ui_label]
-
-    seed = int(st.sidebar.number_input("Seed", min_value=0, value=int(base_data.get("seed", 0)), step=1))
-    max_ticks = int(
-        st.sidebar.number_input(
-            "Maksimum Tick",
-            min_value=1,
-            value=int(base_data.get("simulation", {}).get("max_ticks", 200)),
-            step=1,
-        )
+    st.markdown(
+        """
+        <div class="hero">
+            <h1>Multi-Agent Depo Robot Koordinasyonu</h1>
+            <p>Sunum için sade demo akışı ve LaTeX makale için tekrar üretilebilir paper pack çıktıları.</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
-    playback_speed = int(st.sidebar.slider("Oynatma hızı", min_value=1, max_value=5, value=2, step=1))
-    show_heatmap = st.sidebar.checkbox("Isı haritası kaplaması", value=True)
-    use_editor = st.sidebar.checkbox("Düzenleyicideki JSON'u kullan", value=False)
-    persist_results = st.sidebar.checkbox("Sonuçları `results/` altına kaydet", value=True)
-    run_clicked = st.sidebar.button("Simülasyonu Başlat", type="primary")
+    demo_tab, paper_tab = st.tabs(["Demo", "Paper Pack"])
 
-    planner_cfg = PlannerConfig(
-        algorithm=planner_algorithm,
-        heuristic_weight=heuristic_weight,
-    )
+    with demo_tab:
+        st.subheader("Karşılaştırmalı Demo")
+        st.caption("Ana anlatı: aynı senaryoda baseline ve koordineli mod farkını hızlı ve temiz şekilde göstermek.")
 
-    if run_clicked:
-        try:
-            if use_editor:
-                scenario_data = json.loads(st.session_state["scenario_json_text"])
-                config = _config_from_data(scenario_data)
+        with st.expander("Gelişmiş demo seçenekleri", expanded=False):
+            include_appendix = st.checkbox("Appendix senaryolarını göster", value=False, key="demo_appendix")
+            include_legacy = st.checkbox("Legacy senaryolarını göster", value=False, key="demo_legacy")
+            single_mode = st.checkbox("Tek koşum modunu aç", value=False, key="demo_single_mode")
+            show_heatmap = st.checkbox("Isı haritasını göster", value=True, key="demo_heatmap")
+            playback_speed = st.slider("Replay adım boyu", min_value=1, max_value=5, value=2, key="demo_speed")
+
+        scenario_options = _scenario_names(include_appendix=st.session_state.get("demo_appendix", False), include_legacy=st.session_state.get("demo_legacy", False))
+        default_index = scenario_options.index("narrow_corridor_swap") if "narrow_corridor_swap" in scenario_options else 0
+
+        with st.form("demo_form"):
+            c1, c2, c3, c4, c5 = st.columns(5)
+            scenario_name = c1.selectbox("Senaryo", scenario_options, index=default_index)
+            if st.session_state.get("demo_single_mode", False):
+                run_mode_label = c2.selectbox("Akış", ["Karşılaştırma", "Tek Koşum - Koordineli", "Tek Koşum - Baseline"], index=0)
             else:
-                config = load_scenario(selected_path)
-            config = replace(
-                config,
+                run_mode_label = c2.selectbox("Akış", ["Karşılaştırma"], index=0)
+            planner_label = c3.selectbox("Planlayıcı", list(PLANNER_LABELS.values()), index=0)
+            allocator_label = c4.selectbox("Atayıcı", [_allocator_label("greedy"), _allocator_label("hungarian")], index=0)
+            seed = int(c5.number_input("Seed", min_value=0, value=int(load_scenario(scenario_path(scenario_name)).seed), step=1))
+
+            planner_algorithm = next(key for key, value in PLANNER_LABELS.items() if value == planner_label)
+            heuristic_weight = 1.0
+            if planner_algorithm == "weighted_astar":
+                heuristic_weight = st.slider("A* ağırlık (w)", min_value=1.0, max_value=3.0, value=1.4, step=0.1)
+            max_ticks = int(st.number_input("Maksimum tick", min_value=1, value=int(load_scenario(scenario_path(scenario_name)).max_ticks), step=1))
+            run_demo = st.form_submit_button("Demo Çalıştır", type="primary")
+
+        if run_demo:
+            planner = PlannerConfig(algorithm=planner_algorithm, heuristic_weight=heuristic_weight)
+            allocator = next(key for key, value in ALLOCATOR_LABELS.items() if value == allocator_label)
+            mode: Mode | None = None
+            if run_mode_label == "Tek Koşum - Koordineli":
+                mode = "coordinated"
+            elif run_mode_label == "Tek Koşum - Baseline":
+                mode = "baseline"
+            st.session_state["demo_payload"] = _run_demo(
+                mode=mode,
+                scenario_name=scenario_name,
+                planner=planner,
+                allocator=allocator,
                 seed=seed,
                 max_ticks=max_ticks,
-                planner=planner_cfg,
-                allocator_policy=allocator_policy,
             )
 
-            payload: dict = {
-                "config": config,
-                "run_type": run_type,
-                "mode": mode,
-                "planner": planner_cfg,
-                "allocator": allocator_policy,
-                "single": None,
-                "baseline": None,
-                "coordinated": None,
-                "saved_files": [],
-            }
-
-            if run_type == "Tek Koşum":
-                result = run_simulation(
-                    config=config,
-                    mode=mode,
-                    seed=config.seed,
-                    planner_override=planner_cfg,
-                    allocator_override=allocator_policy,
-                )
-                payload["single"] = result
-                if persist_results:
-                    saved = _save_result_files(
-                        prefix=f"single_{config.name.lower().replace(' ', '_')}",
-                        payload=result.to_dict(),
-                    )
-                    payload["saved_files"] = saved
-            else:
-                baseline = run_simulation(
-                    config=config,
-                    mode="baseline",
-                    seed=config.seed,
-                    planner_override=planner_cfg,
-                    allocator_override=allocator_policy,
-                )
-                coordinated = run_simulation(
-                    config=config,
-                    mode="coordinated",
-                    seed=config.seed,
-                    planner_override=planner_cfg,
-                    allocator_override=allocator_policy,
-                )
-                payload["baseline"] = baseline
-                payload["coordinated"] = coordinated
-
-                if persist_results:
-                    rows = [
-                        {
-                            "mode": "baseline",
-                            "planner": planner_cfg.algorithm,
-                            "heuristic_weight": planner_cfg.heuristic_weight,
-                            "allocator": allocator_policy,
-                            **baseline.metrics.to_dict(),
-                        },
-                        {
-                            "mode": "coordinated",
-                            "planner": planner_cfg.algorithm,
-                            "heuristic_weight": planner_cfg.heuristic_weight,
-                            "allocator": allocator_policy,
-                            **coordinated.metrics.to_dict(),
-                        },
-                    ]
-                    saved = _save_result_files(
-                        prefix=f"comparison_{config.name.lower().replace(' ', '_')}",
-                        payload={
-                            "scenario": config.name,
-                            "seed": config.seed,
-                            "planner": planner_cfg.algorithm,
-                            "heuristic_weight": planner_cfg.heuristic_weight,
-                            "allocator": allocator_policy,
-                            "baseline": baseline.metrics.to_dict(),
-                            "coordinated": coordinated.metrics.to_dict(),
-                        },
-                        rows=rows,
-                    )
-                    payload["saved_files"] = saved
-
-            st.session_state["last_run_payload"] = payload
-        except Exception as exc:  # noqa: BLE001
-            st.error(f"Çalıştırma hatası: {exc}")
-
-    sim_tab, ablation_tab, editor_tab = st.tabs(["Simülasyon", "Ablasyon", "Senaryo Düzenleyici"])
-
-    with sim_tab:
-        payload = st.session_state.get("last_run_payload")
-        if payload is None:
-            st.info("Soldan ayarları seçip 'Simülasyonu Başlat' butonuna tıklayın.")
+        demo_payload = st.session_state.get("demo_payload")
+        if demo_payload is None:
+            st.info("Varsayılan akış için `narrow_corridor_swap` senaryosunu karşılaştırmalı modda çalıştır.")
         else:
-            config: SimulationConfig = payload["config"]
-            run_type_payload = payload["run_type"]
-            mode_payload: Mode = payload["mode"]
-            planner_payload: PlannerConfig = payload["planner"]
-            allocator_payload: AllocationPolicy = payload["allocator"]
+            config: SimulationConfig = demo_payload["config"]
+            planner = config.planner
+            allocator = config.allocator_policy
+            run_mode = "Karşılaştırma" if demo_payload["compare"] else _mode_label(demo_payload["mode"])
+            _render_run_overview(config, planner, allocator, run_mode)
+            _render_metric_explanations()
 
-            _render_config_overview(
-                config=config,
-                run_type=run_type_payload,
-                mode=mode_payload,
-                planner=planner_payload,
-                allocator=allocator_payload,
-            )
-            _render_metric_guide()
-
-            if run_type_payload == "Tek Koşum":
-                result: RunResult = payload["single"]
-                _render_metric_cards(result.metrics.to_dict(), f"Metrikler ({_mode_label(mode_payload)})")
+            if demo_payload["compare"]:
+                baseline: RunResult = demo_payload["baseline"]
+                coordinated: RunResult = demo_payload["coordinated"]
+                _render_comparison_cards(baseline.metrics.to_dict(), coordinated.metrics.to_dict())
+                with st.expander("İkincil metrikler", expanded=False):
+                    left, right = st.columns(2)
+                    with left:
+                        _render_secondary_cards(baseline.metrics.to_dict())
+                    with right:
+                        _render_secondary_cards(coordinated.metrics.to_dict())
+                left, right = st.columns(2)
+                with left:
+                    _render_primary_cards(baseline.metrics.to_dict(), "Baseline")
+                    _render_replay(
+                        baseline,
+                        config,
+                        key_prefix="demo_baseline",
+                        title="Baseline Replay",
+                        show_heatmap=st.session_state.get("demo_heatmap", True),
+                        step_size=st.session_state.get("demo_speed", 2),
+                    )
+                with right:
+                    _render_primary_cards(coordinated.metrics.to_dict(), "Koordineli")
+                    _render_replay(
+                        coordinated,
+                        config,
+                        key_prefix="demo_coordinated",
+                        title="Koordineli Replay",
+                        show_heatmap=st.session_state.get("demo_heatmap", True),
+                        step_size=st.session_state.get("demo_speed", 2),
+                    )
+            else:
+                single: RunResult = demo_payload["single"]
+                _render_primary_cards(single.metrics.to_dict(), f"{_mode_label(demo_payload['mode'])} Sonucu")
+                _render_secondary_cards(single.metrics.to_dict())
                 _render_replay(
-                    result=result,
-                    config=config,
-                    key_prefix=f"single_{mode_payload}",
-                    title="Robot Hareket Tekrarı",
-                    show_heatmap=show_heatmap,
-                    step_size=playback_speed,
-                )
-            else:
-                baseline: RunResult = payload["baseline"]
-                coordinated: RunResult = payload["coordinated"]
-
-                _render_comparison_cards(
-                    baseline=baseline.metrics.to_dict(),
-                    coordinated=coordinated.metrics.to_dict(),
+                    single,
+                    config,
+                    key_prefix="demo_single",
+                    title="Replay",
+                    show_heatmap=st.session_state.get("demo_heatmap", True),
+                    step_size=st.session_state.get("demo_speed", 2),
                 )
 
-                c1, c2 = st.columns(2)
-                with c1:
-                    _render_metric_cards(baseline.metrics.to_dict(), "Baseline Metrikleri")
-                    _render_replay(
-                        result=baseline,
-                        config=config,
-                        key_prefix="baseline",
-                        title="Baseline Tekrarı",
-                        show_heatmap=show_heatmap,
-                        step_size=playback_speed,
-                    )
-                with c2:
-                    _render_metric_cards(coordinated.metrics.to_dict(), "Koordineli Mod Metrikleri")
-                    _render_replay(
-                        result=coordinated,
-                        config=config,
-                        key_prefix="coordinated",
-                        title="Koordineli Mod Tekrarı",
-                        show_heatmap=show_heatmap,
-                        step_size=playback_speed,
-                    )
+    with paper_tab:
+        st.subheader("Paper Pack")
+        st.caption("Kanonik benchmark suite'lerini tek komut mantığıyla çalıştırır; sade CSV, LaTeX ve figür çıktıları üretir.")
 
-            for path in payload.get("saved_files", []):
-                st.caption(f"Kaydedildi: {path}")
-
-    with ablation_tab:
-        st.subheader("Ablasyon Çalışması")
-        st.caption("Senaryo × mod × planlayıcı × atayıcı kombinasyonlarını çalıştırır.")
-
-        ab_scenario_labels = st.multiselect(
-            "Senaryolar",
-            scenario_labels,
-            default=[selected_scenario_label],
-        )
-        ab_scenarios = [str(scenario_label_map[label]) for label in ab_scenario_labels]
-        ab_planners = st.multiselect(
-            "Planlayıcılar",
-            [_planner_label("astar"), _planner_label("dijkstra"), _planner_label("weighted_astar")],
-            default=[_planner_label("astar"), _planner_label("dijkstra"), _planner_label("weighted_astar")],
-        )
-        ab_allocators = st.multiselect(
-            "Atayıcılar",
-            [_allocator_label("greedy"), _allocator_label("hungarian")],
-            default=[_allocator_label("greedy"), _allocator_label("hungarian")],
-        )
-        ab_modes = st.multiselect(
-            "Modlar",
-            ["Baseline", "Koordineli"],
-            default=["Baseline", "Koordineli"],
-        )
-
-        ab_weight = st.slider("A* ağırlık (w) - Ablation", 1.0, 3.0, 1.4, 0.1)
-        run_ablation_clicked = st.button("Ablasyon Çalıştır")
-
-        if run_ablation_clicked:
-            if not ab_scenarios:
-                st.warning("En az bir senaryo seçmelisiniz.")
-            else:
-                planners: list[PlannerConfig] = []
-                planner_algorithms = [PLANNER_FROM_LABEL[label] for label in ab_planners]
-                allocator_policies: list[AllocationPolicy] = [
-                    ALLOCATOR_FROM_LABEL[label] for label in ab_allocators
-                ]
-                mode_values: list[Mode] = [
-                    "baseline" if item == "Baseline" else "coordinated" for item in ab_modes
-                ]
-
-                for algorithm in planner_algorithms:
-                    if algorithm == "weighted_astar":
-                        planners.append(PlannerConfig(algorithm=algorithm, heuristic_weight=ab_weight))
-                    else:
-                        planners.append(PlannerConfig(algorithm=algorithm, heuristic_weight=1.0))
-
-                rows = _run_ablation(
-                    scenario_paths=ab_scenarios,
-                    seed_override=seed,
-                    planners=planners,
-                    allocators=allocator_policies,
-                    modes=mode_values,
+        with st.form("paper_form"):
+            c1, c2, c3 = st.columns([2, 2, 2])
+            suite_label = c1.selectbox("Deney paketi", list(SUITE_LABELS.values()), index=4)
+            with_latex = c2.checkbox("LaTeX tablolarını üret", value=True)
+            with_figures = c3.checkbox("Figür paketini üret", value=True)
+            selected_suite = next(key for key, value in SUITE_LABELS.items() if value == suite_label)
+            seeds = DEFAULT_ROBUSTNESS_SEEDS
+            if selected_suite in {"robustness", "all"}:
+                seeds = st.multiselect(
+                    "Robustness seed listesi",
+                    options=[11, 17, 23, 31, 37, 41, 53],
+                    default=DEFAULT_ROBUSTNESS_SEEDS,
                 )
-                st.session_state["ablation_rows"] = rows
-                main_rows, appendix_rows = _build_paper_tables(rows)
-                st.session_state["paper_main_rows"] = main_rows
-                st.session_state["paper_appendix_rows"] = appendix_rows
+            run_paper = st.form_submit_button("Paper Pack Çalıştır", type="primary")
 
-                saved = _save_result_files(
-                    prefix="ablation_ui",
-                    payload={"rows": rows, "num_rows": len(rows)},
-                    rows=rows,
-                )
-                st.session_state["ablation_saved"] = saved
-                st.session_state["paper_saved"] = _save_paper_tables(main_rows, appendix_rows)
+        if run_paper:
+            st.session_state["paper_payload"] = run_suite(
+                suite=selected_suite,
+                output_dir="results",
+                seeds=list(seeds),
+                with_latex=with_latex,
+                with_figures=with_figures,
+            )
 
-        rows = st.session_state.get("ablation_rows")
-        if rows:
-            st.markdown("### Makale Ana Tablosu")
-            st.dataframe(st.session_state.get("paper_main_rows", []), width="stretch")
-            with st.expander("Makale Ek Tablosu (Teknik Metrikler)", expanded=False):
-                st.dataframe(st.session_state.get("paper_appendix_rows", []), width="stretch")
-            with st.expander("Ham Ablation Çıktısı", expanded=False):
-                st.dataframe(rows, width="stretch")
+        paper_payload = st.session_state.get("paper_payload")
+        if paper_payload is None:
+            st.info("Varsayılan öneri: `Tam Paper Pack` + LaTeX + figür üretimi.")
+        else:
+            _paper_pack_summary(paper_payload)
 
-            for path in st.session_state.get("ablation_saved", []):
-                st.caption(f"Ablasyon kaydı: {path}")
-            for path in st.session_state.get("paper_saved", []):
-                st.caption(f"Makale tablosu kaydı: {path}")
+            main_table = _resolve_table_path(paper_payload, "main")
+            allocator_table = _resolve_table_path(paper_payload, "allocator")
+            planner_table = _resolve_table_path(paper_payload, "planner")
+            robustness_table = _resolve_table_path(paper_payload, "robustness")
 
-    with editor_tab:
-        _show_editor(selected_path)
+            if main_table:
+                _render_table("Ana Karşılaştırma Tablosu", main_table)
+            if allocator_table:
+                _render_table("Atayıcı Ablation Tablosu", allocator_table)
+            if planner_table:
+                _render_table("Planlayıcı Ablation Tablosu", planner_table)
+            if robustness_table:
+                with st.expander("Robustness / Appendix Tablosu", expanded=False):
+                    _render_table("Robustness Tablosu", robustness_table)
+
+            if paper_payload.get("figures"):
+                fig1, fig2, fig3 = st.columns(3)
+                with fig1:
+                    _render_svg_preview("Swap Demo Figürü", _resolve_figure_path(paper_payload, "swap_demo"))
+                with fig2:
+                    _render_svg_preview("High Load Kıyas Figürü", _resolve_figure_path(paper_payload, "high_load_compare"))
+                with fig3:
+                    _render_svg_preview("Dinamik Engel Figürü", _resolve_figure_path(paper_payload, "dynamic_obstacle"))
+
+            with st.expander("Advanced", expanded=False):
+                st.markdown("#### Dosya Çıktıları")
+                st.code(json.dumps(paper_payload, indent=2, ensure_ascii=False), language="json")
+                raw_rows = _read_csv_rows(paper_payload["raw_csv"])
+                st.markdown("#### Ham suite tablosu")
+                st.dataframe(raw_rows, width="stretch")
 
 
 if __name__ == "__main__":
