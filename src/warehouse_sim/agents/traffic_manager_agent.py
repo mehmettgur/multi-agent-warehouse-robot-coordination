@@ -21,12 +21,12 @@ class TrafficManagerAgent:
         grid: GridMap,
         max_ticks: int,
         planner: PlannerConfig,
-        coordination: CoordinationConfig,
+        coordination: CoordinationConfig | None = None,
     ) -> None:
         self.grid = grid
         self.max_ticks = max_ticks
         self.planner = planner
-        self.coordination = coordination
+        self.coordination = coordination or CoordinationConfig()
 
     def plan_and_reserve(
         self,
