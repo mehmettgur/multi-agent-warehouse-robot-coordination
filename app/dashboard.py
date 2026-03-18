@@ -44,16 +44,16 @@ SUITE_LABELS = {
     "all": "Tam Paper Pack",
 }
 PRIMARY_METRICS = [
-    ("Tamamlama", "completed_tasks"),
-    ("Çakışma", "collision_count"),
-    ("Makespan", "makespan"),
-    ("Throughput", "throughput"),
+    "Tamamlama",
+    "Çakışma",
+    "Makespan",
+    "Throughput",
 ]
 SECONDARY_METRICS = [
-    ("Toplam Yol", "total_path_length"),
-    ("Bekleme", "wait_count"),
-    ("Ort. Görev Süresi", "avg_task_completion_time"),
-    ("Adillik Std", "fairness_task_std"),
+    "Toplam Yol",
+    "Bekleme",
+    "Ort. Görev Süresi",
+    "Adillik Std",
 ]
 METRIC_EXPLANATIONS = {
     "Tamamlama": "Görevlerin kaçının tamamlandığını gösterir. Yüksek olması daha iyidir.",
@@ -257,21 +257,20 @@ def _render_run_overview(config: SimulationConfig, planner: PlannerConfig, alloc
 def _render_primary_cards(metrics: dict, title: str) -> None:
     st.markdown(f"#### {title}")
     cols = st.columns(4)
-    labels = [item[0] for item in PRIMARY_METRICS]
-    for col, label in zip(cols, labels):
+    for col, label in zip(cols, PRIMARY_METRICS):
         col.metric(label, _metric_value(label, metrics))
 
 
 def _render_secondary_cards(metrics: dict) -> None:
     cols = st.columns(4)
-    for col, (label, _) in zip(cols, SECONDARY_METRICS):
+    for col, label in zip(cols, SECONDARY_METRICS):
         col.metric(label, _metric_value(label, metrics))
 
 
 def _render_comparison_cards(baseline: dict, coordinated: dict) -> None:
     st.markdown("### Kıyas Özeti")
     cols = st.columns(4)
-    for idx, (label, _) in enumerate(PRIMARY_METRICS):
+    for idx, label in enumerate(PRIMARY_METRICS):
         baseline_value = _metric_value(label, baseline)
         coordinated_value = _metric_value(label, coordinated)
         delta = None
@@ -548,11 +547,11 @@ def main() -> None:
         st.caption("Ana anlatı: aynı senaryoda baseline ve koordineli mod farkını hızlı ve temiz şekilde göstermek.")
 
         with st.expander("Gelişmiş demo seçenekleri", expanded=False):
-            include_appendix = st.checkbox("Appendix senaryolarını göster", value=False, key="demo_appendix")
-            include_legacy = st.checkbox("Legacy senaryolarını göster", value=False, key="demo_legacy")
-            single_mode = st.checkbox("Tek koşum modunu aç", value=False, key="demo_single_mode")
-            show_heatmap = st.checkbox("Isı haritasını göster", value=True, key="demo_heatmap")
-            playback_speed = st.slider("Replay adım boyu", min_value=1, max_value=5, value=2, key="demo_speed")
+            st.checkbox("Appendix senaryolarını göster", value=False, key="demo_appendix")
+            st.checkbox("Legacy senaryolarını göster", value=False, key="demo_legacy")
+            st.checkbox("Tek koşum modunu aç", value=False, key="demo_single_mode")
+            st.checkbox("Isı haritasını göster", value=True, key="demo_heatmap")
+            st.slider("Replay adım boyu", min_value=1, max_value=5, value=2, key="demo_speed")
 
         scenario_options = _scenario_names(include_appendix=st.session_state.get("demo_appendix", False), include_legacy=st.session_state.get("demo_legacy", False))
         default_index = scenario_options.index("narrow_corridor_swap") if "narrow_corridor_swap" in scenario_options else 0

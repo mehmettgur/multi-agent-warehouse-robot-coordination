@@ -7,10 +7,6 @@ Bu sürüm, proje anlatısını üç katmana ayırır:
 - `Paper Pack`: Makale için kanonik benchmark suite'leri, temiz CSV tabloları ve LaTeX çıktıları
 - `Appendix / Advanced`: Dynamic event ve legacy senaryolar
 
-## Plan Dosyaları
-- `PLAN.md`: İlk MVP planı
-- `PLAN2.MD`: Ablation ve genişletilmiş koordinasyon planı
-
 ## Ana Özellikler
 - Ajan mimarisi:
   - `RobotAgent`
