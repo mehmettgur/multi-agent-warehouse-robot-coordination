@@ -2,13 +2,19 @@
   "planner": "A*",
   "figures": {
     "swap_demo": [
-      "results\\paper\\swap_demo.svg"
+      "results/paper/swap_demo.svg"
     ],
     "high_load_compare": [
-      "results\\paper\\high_load_compare.svg"
+      "results/paper/high_load_compare.svg"
     ],
     "dynamic_obstacle": [
-      "results\\paper\\dynamic_obstacle.svg"
+      "results/paper/dynamic_obstacle.svg"
+    ],
+    "architecture_flow": [
+      "results/paper/architecture_flow.svg"
+    ],
+    "experiment_pipeline": [
+      "results/paper/experiment_pipeline.svg"
     ]
   }
 }
