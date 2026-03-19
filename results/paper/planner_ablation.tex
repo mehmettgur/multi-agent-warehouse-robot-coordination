@@ -1,0 +1,27 @@
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{llllll}
+\hline
+Senaryo & Planlayıcı & Makespan & Throughput & Genişletilen Düğüm & Planlama Süresi (ms) \\
+\hline
+narrow\_corridor\_swap & A* & 11 & 0.2727 & 192 & 2.763 \\
+narrow\_corridor\_swap & Dijkstra & 11 & 0.2727 & 942 & 13.434 \\
+narrow\_corridor\_swap & A* (Ağırlıklı) & 11 & 0.2727 & 159 & 2.205 \\
+intersection\_4way\_crossing & A* & 10 & 0.4 & 302 & 3.948 \\
+intersection\_4way\_crossing & Dijkstra & 10 & 0.4 & 1988 & 21.211 \\
+intersection\_4way\_crossing & A* (Ağırlıklı) & 10 & 0.4 & 260 & 4.563 \\
+bottleneck\_shelves & A* & 33 & 0.2424 & 1651 & 20.67 \\
+bottleneck\_shelves & Dijkstra & 35 & 0.2286 & 20117 & 213.123 \\
+bottleneck\_shelves & A* (Ağırlıklı) & 33 & 0.2424 & 1205 & 10.533 \\
+high\_load\_6r\_30t & A* & 117 & 0.2564 & 10361 & 122.75 \\
+high\_load\_6r\_30t & Dijkstra & 117 & 0.2564 & 199769 & 4371.482 \\
+high\_load\_6r\_30t & A* (Ağırlıklı) & 117 & 0.2564 & 5996 & 98.31 \\
+dynamic\_obstacle & A* & 11 & 0.3636 & 483 & 7.527 \\
+dynamic\_obstacle & Dijkstra & 12 & 0.3333 & 5869 & 64.011 \\
+dynamic\_obstacle & A* (Ağırlıklı) & 11 & 0.3636 & 279 & 5.006 \\
+\hline
+\end{tabular}
+\caption{Koordineli mod altında planlayıcı algoritmalarının karşılaştırması.}
+\label{tab:planner_ablation}
+\end{table}

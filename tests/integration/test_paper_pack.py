@@ -5,7 +5,7 @@ from pathlib import Path
 
 from warehouse_sim.paper_tables import generate_paper_tables
 from warehouse_sim.runner import run_suite
-from warehouse_sim.scenario_catalog import CORE_SCENARIOS
+from warehouse_sim.scenario_catalog import COORDINATION_SCENARIOS, CORE_SCENARIOS
 
 
 def _read_csv(path: str | Path) -> list[dict[str, str]]:
@@ -16,7 +16,7 @@ def _read_csv(path: str | Path) -> list[dict[str, str]]:
 def test_main_suite_outputs_expected_rows_and_latex(tmp_path: Path) -> None:
     payload = run_suite("main", str(tmp_path), with_latex=True)
 
-    assert payload["num_rows"] == len(CORE_SCENARIOS) * 2
+    assert payload["num_rows"] == len(CORE_SCENARIOS) * 3
     assert "main" in payload["tables"]
 
     main_csv = next(Path(path) for path in payload["tables"]["main"] if path.endswith(".csv"))
@@ -25,8 +25,9 @@ def test_main_suite_outputs_expected_rows_and_latex(tmp_path: Path) -> None:
     assert main_tex.exists()
 
     rows = _read_csv(main_csv)
-    assert len(rows) == len(CORE_SCENARIOS) * 2
+    assert len(rows) == len(CORE_SCENARIOS) * 3
     assert {row["Senaryo"] for row in rows} == set(CORE_SCENARIOS)
+    assert {row["Mod"] for row in rows} == {"Baseline", "Öncelikli Baseline", "Koordineli"}
     assert "narrow_corridor" not in {row["Senaryo"] for row in rows}
 
 
@@ -43,12 +44,12 @@ def test_coordination_suite_contains_expected_variants(tmp_path: Path) -> None:
     raw_rows = _read_csv(payload["raw_csv"])
 
     assert {row["coordination_variant"] for row in raw_rows} == {
-        "independent",
-        "priority_static",
         "vertex_only",
         "static_priority",
+        "no_micro_replan",
         "full",
     }
+    assert {row["scenario"] for row in raw_rows} == set(COORDINATION_SCENARIOS)
     assert all(row["suite"] == "coordination" for row in raw_rows)
 
 

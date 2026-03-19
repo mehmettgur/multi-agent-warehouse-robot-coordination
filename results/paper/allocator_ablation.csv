@@ -1,0 +1,7 @@
+Senaryo,Atayıcı,Makespan,Throughput,Toplam Yol,Bekleme
+bottleneck_shelves,Greedy,36,0.2222,137,43
+bottleneck_shelves,Hungarian,33,0.2424,125,40
+high_load_6r_30t,Greedy,145,0.2069,788,82
+high_load_6r_30t,Hungarian,117,0.2564,635,67
+stochastic_delay,Greedy,45,0.1778,129,96
+stochastic_delay,Hungarian,37,0.2162,112,73

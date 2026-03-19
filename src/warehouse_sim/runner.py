@@ -252,19 +252,23 @@ def run_ablation(
 def _main_suite_rows() -> list[dict]:
     planner = _planner_config("astar", 1.0)
     rows: list[dict] = []
+    modes: list[tuple[Mode, CoordinationVariant, AllocationPolicy]] = [
+        ("baseline", "independent", "greedy"),
+        ("baseline_priority", "priority_static", "greedy"),
+        ("coordinated", "full", "greedy"),
+    ]
     for path_str in scenario_paths(scenarios_for_suite("main")):
         config = load_scenario(path_str)
-        for mode in ["baseline", "coordinated"]:
-            coordination = _coordination_config("independent" if mode == "baseline" else "full")
+        for mode, variant, allocator in modes:
             rows.append(
                 _run_row(
                     suite="main",
                     scenario_path_str=path_str,
                     planner=planner,
-                    allocator="greedy",
+                    allocator=allocator,
                     mode=mode,
                     seed=config.seed,
-                    coordination=coordination,
+                    coordination=_coordination_config(variant),
                 )
             )
     return rows
@@ -318,10 +322,9 @@ def _coordination_suite_rows() -> list[dict]:
     planner = _planner_config("astar", 1.0)
     rows: list[dict] = []
     variants: list[tuple[Mode, CoordinationVariant, AllocationPolicy]] = [
-        ("baseline", "independent", "greedy"),
-        ("baseline_priority", "priority_static", "greedy"),
         ("coordinated", "vertex_only", "greedy"),
         ("coordinated", "static_priority", "greedy"),
+        ("coordinated", "no_micro_replan", "greedy"),
         ("coordinated", "full", "greedy"),
     ]
 

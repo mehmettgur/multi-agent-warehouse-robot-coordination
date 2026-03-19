@@ -70,6 +70,8 @@ Demo tarafında varsayılan görünür senaryolar:
 Appendix senaryoları:
 - `dynamic_obstacle`
 - `stochastic_delay`
+- `merge_burst_priority`
+- `parking_bay_micro_replan`
 
 Legacy senaryolar varsayılan olarak gizlidir:
 - `narrow_corridor`
@@ -188,7 +190,8 @@ pytest
 ## Notlar
 - Ana anlatı `A* + coordinated planning` üzerinedir.
 - `baseline_priority`, bağımsız baseline'a göre daha adil ikinci baseline olarak kullanılır.
-- `coordination` suite'i, ikinci baseline ve koordinasyon bileşen ablation'ını birlikte üretir.
+- `main` suite'i, `Baseline` + `Öncelikli Baseline` + `Koordineli` üçlüsünü birlikte üretir.
+- `coordination` suite'i, zayıf demo senaryoları yerine hedefli zorlayıcı benchmark'lar üzerinde yalnız koordinasyon bileşenlerini karşılaştırır.
 - `Weighted A*` ve `Dijkstra`, planner ablation içinde destekleyici analiz olarak tutulur.
 - `Hungarian`, ana coordination tablosunda değil; ayrı allocator ablation tablosunda değerlendirilir.
 - `narrow_corridor` senaryosu legacy kabul edilir ve kanonik paper/demo paketlerine dahil edilmez.

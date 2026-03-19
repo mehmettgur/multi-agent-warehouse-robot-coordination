@@ -1,0 +1,37 @@
+{
+  "name": "merge_burst_priority",
+  "seed": 41,
+  "planner": {
+    "algorithm": "astar",
+    "heuristic_weight": 1.0
+  },
+  "allocator_policy": "greedy",
+  "grid": {
+    "width": 11,
+    "height": 5,
+    "obstacles": [
+      [0, 0], [1, 0], [2, 0], [3, 0], [4, 0], [5, 0], [6, 0], [7, 0], [8, 0], [9, 0], [10, 0],
+      [0, 1], [1, 1], [2, 1], [8, 1], [9, 1], [10, 1],
+      [0, 3], [1, 3], [2, 3], [8, 3], [9, 3], [10, 3],
+      [0, 4], [1, 4], [2, 4], [3, 4], [4, 4], [5, 4], [6, 4], [7, 4], [8, 4], [9, 4], [10, 4]
+    ]
+  },
+  "stations": {
+    "pickups": [[0, 2], [10, 2]],
+    "dropoffs": [[10, 2], [0, 2]]
+  },
+  "robots": [
+    {"id": "R1", "start": [0, 2]},
+    {"id": "R2", "start": [10, 2]},
+    {"id": "R3", "start": [5, 2]}
+  ],
+  "tasks": [
+    {"id": "T1", "pickup": [0, 2], "dropoff": [10, 2], "release_tick": 0},
+    {"id": "T2", "pickup": [10, 2], "dropoff": [0, 2], "release_tick": 0},
+    {"id": "T3", "pickup": [0, 2], "dropoff": [10, 2], "release_tick": 4},
+    {"id": "T4", "pickup": [10, 2], "dropoff": [0, 2], "release_tick": 3}
+  ],
+  "simulation": {
+    "max_ticks": 150
+  }
+}

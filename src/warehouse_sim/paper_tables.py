@@ -33,10 +33,10 @@ SUITE_OUTPUTS: dict[str, str] = {
     "robustness": "robustness",
 }
 SUITE_CAPTIONS: dict[str, str] = {
-    "main": "Temel senaryolarda baseline ve koordineli mod karşılaştırması.",
+    "main": "Temel senaryolarda bağımsız baseline, daha adil priority baseline ve tam koordineli mod karşılaştırması.",
     "allocator": "Koordineli mod altında görev atama politikalarının karşılaştırması.",
     "planner": "Koordineli mod altında planlayıcı algoritmalarının karşılaştırması.",
-    "coordination": "Koordinasyon bileşenlerinin ve daha adil baseline varyantının karşılaştırması.",
+    "coordination": "Hedefli zorlayıcı senaryolarda koordinasyon bileşenlerinin karşılaştırması.",
     "robustness": "Dinamik olaylar altında koordineli mod dayanıklılık özeti.",
 }
 COORDINATION_LABELS: dict[str, str] = {
@@ -212,12 +212,11 @@ def build_coordination_ablation_table(rows: list[dict[str, object]]) -> list[dic
             {
                 "Senaryo": row.get("scenario", ""),
                 "Varyant": COORDINATION_LABELS.get(variant, variant),
-                "Mod": MODE_LABELS.get(str(row.get("mode", "coordinated")), str(row.get("mode", "coordinated"))),
                 "Tamamlama Oranı": _format_completion_ratio(completed, total),
                 "Çakışma": _to_int(row.get("collision_count")),
                 "Makespan": _to_int(row.get("makespan")),
-                "Throughput": round(_to_float(row.get("throughput")), 4),
                 "Bekleme": _to_int(row.get("wait_count")),
+                "Micro-Replan": _to_int(row.get("micro_replanning_count")),
             }
         )
     return table

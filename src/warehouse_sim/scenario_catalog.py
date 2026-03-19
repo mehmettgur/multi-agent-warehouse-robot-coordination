@@ -17,10 +17,18 @@ CORE_SCENARIOS: tuple[str, ...] = (
 APPENDIX_SCENARIOS: tuple[str, ...] = (
     "dynamic_obstacle",
     "stochastic_delay",
+    "merge_burst_priority",
+    "parking_bay_micro_replan",
 )
 LEGACY_SCENARIOS: tuple[str, ...] = (
     "narrow_corridor",
     "dense_tasks",
+)
+COORDINATION_SCENARIOS: tuple[str, ...] = (
+    "bottleneck_shelves",
+    "high_load_6r_30t",
+    "merge_burst_priority",
+    "parking_bay_micro_replan",
 )
 
 SUITE_SCENARIOS: dict[str, tuple[str, ...]] = {
@@ -31,7 +39,7 @@ SUITE_SCENARIOS: dict[str, tuple[str, ...]] = {
         "stochastic_delay",
     ),
     "planner": CORE_SCENARIOS + ("dynamic_obstacle",),
-    "coordination": CORE_SCENARIOS,
+    "coordination": COORDINATION_SCENARIOS,
     "robustness": (
         "dynamic_obstacle",
         "stochastic_delay",

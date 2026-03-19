@@ -60,6 +60,65 @@ def test_dynamic_obstacle_scenario_runs_with_event_metrics() -> None:
     assert result.metrics.dynamic_block_replans >= 1
 
 
+def test_merge_burst_priority_requires_dynamic_priority() -> None:
+    config = load_scenario("configs/scenarios/merge_burst_priority.json")
+    static_priority = run_simulation(
+        config=config,
+        mode="coordinated",
+        seed=41,
+        coordination_override=CoordinationConfig(
+            variant="static_priority",
+            edge_conflicts=True,
+            dynamic_priority=False,
+            micro_replan=True,
+        ),
+    )
+    full = run_simulation(
+        config=config,
+        mode="coordinated",
+        seed=41,
+        coordination_override=CoordinationConfig(
+            variant="full",
+            edge_conflicts=True,
+            dynamic_priority=True,
+            micro_replan=True,
+        ),
+    )
+
+    assert full.metrics.completed_tasks > static_priority.metrics.completed_tasks
+    assert full.metrics.wait_count < static_priority.metrics.wait_count
+
+
+def test_parking_bay_micro_replan_beats_no_micro_replan() -> None:
+    config = load_scenario("configs/scenarios/parking_bay_micro_replan.json")
+    no_micro = run_simulation(
+        config=config,
+        mode="coordinated",
+        seed=13,
+        coordination_override=CoordinationConfig(
+            variant="no_micro_replan",
+            edge_conflicts=True,
+            dynamic_priority=True,
+            micro_replan=False,
+        ),
+    )
+    full = run_simulation(
+        config=config,
+        mode="coordinated",
+        seed=13,
+        coordination_override=CoordinationConfig(
+            variant="full",
+            edge_conflicts=True,
+            dynamic_priority=True,
+            micro_replan=True,
+        ),
+    )
+
+    assert full.metrics.collision_count < no_micro.metrics.collision_count
+    assert full.metrics.makespan < no_micro.metrics.makespan
+    assert full.metrics.micro_replanning_count > 0
+
+
 def test_comparison_runner_returns_both_modes_with_planner_override(tmp_path: Path) -> None:
     payload = run_comparison(
         scenario_path="configs/scenarios/narrow_corridor_swap.json",

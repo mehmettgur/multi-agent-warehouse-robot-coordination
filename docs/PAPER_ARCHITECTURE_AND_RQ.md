@@ -35,8 +35,8 @@ Kısa anlatım önerisi:
 
 ## 3. Araştırma Soruları
 
-### RQ1. Koordinasyon gerekli mi?
-Soru: Bağımsız baseline ile koordineli yaklaşım arasında anlamlı fark var mı?
+### RQ1. Koordinasyon gerekli mi ve daha adil baseline ne kadar yeterli?
+Soru: Bağımsız baseline, daha adil priority baseline ve tam koordineli yaklaşım arasında anlamlı fark var mı?
 
 Kullanılacak suite:
 - `python -m warehouse_sim.runner --suite main --latex`
@@ -56,11 +56,12 @@ Tablo kolonları:
 - Ortalama Görev Süresi
 
 Beklenen anlatı:
-- Koordineli mod, baseline'a göre çakışmaları ortadan kaldırır veya çok güçlü biçimde azaltır.
-- Dar koridor, kavşak ve yüksek yük senaryolarında görev tamamlama oranı belirgin şekilde artar.
+- `Baseline`, alt sınırı gösterir.
+- `Öncelikli Baseline`, daha adil ikinci referanstır.
+- `Koordineli`, özellikle darboğaz ve yüksek yük altında tamamlama oranı ve makespan açısından en güçlü varyanttır.
 
-### RQ2. Daha adil baseline ve koordinasyon bileşenleri ne kadar etkili?
-Soru: Naive baseline yerine daha adil bir static-priority baseline kullanıldığında tablo nasıl değişiyor ve full coordinated sistemin hangi bileşenleri kritik?
+### RQ2. Koordinasyonun hangi bileşeni gerçekten kritik?
+Soru: Edge reservation, dinamik öncelik ve micro-replan bileşenleri hangi senaryoda fark yaratıyor?
 
 Kullanılacak suite:
 - `python -m warehouse_sim.runner --suite coordination --latex`
@@ -69,28 +70,31 @@ Kullanılacak suite:
 - `results/paper/coordination_ablation.csv`
 - `results/paper/coordination_ablation.tex`
 
+Hedefli senaryolar:
+- `bottleneck_shelves`
+- `high_load_6r_30t`
+- `merge_burst_priority`
+- `parking_bay_micro_replan`
+
 Tablo varyantları:
-- `Bağımsız Baseline`
-- `Öncelikli Baseline (Statik Öncelik)`
 - `Koordineli (Edge Kapalı)`
 - `Koordineli (Statik Öncelik)`
+- `Koordineli (Micro-Replan Kapalı)`
 - `Koordineli (Tam)`
 
 Tablo kolonları:
 - Senaryo
 - Varyant
-- Mod
 - Tamamlama Oranı
 - Çakışma
 - Makespan
-- Throughput
 - Bekleme
+- Micro-Replan
 
 Beklenen anlatı:
-- `Bağımsız Baseline` en zayıf referanstır.
-- `Öncelikli Baseline`, naive baseline'dan daha adildir ve ikinci baseline olarak kullanılır.
 - `Koordineli (Edge Kapalı)` varyantı, edge reservation'ın darboğaz ve yüksek yük altında kritik olduğunu gösterir.
-- `Koordineli (Statik Öncelik)` ile `Koordineli (Tam)` farkı, dinamik önceliklendirmenin etkisini gösterir.
+- `Koordineli (Statik Öncelik)` varyantı, özellikle `merge_burst_priority` senaryosunda dinamik önceliklendirmenin etkisini görünür kılar.
+- `Koordineli (Micro-Replan Kapalı)` varyantı, özellikle `parking_bay_micro_replan` senaryosunda local conflict resolution katkısını gösterir.
 
 ### RQ3. Görev atama politikasının etkisi nedir?
 Soru: Coordinated mod altında greedy ve Hungarian atama ne kadar fark yaratıyor?
