@@ -200,11 +200,11 @@ def _comparison_svg(baseline: RunResult, coordinated: RunResult, title: str) -> 
     return "".join(pieces)
 
 
-def _arrow(x1: int, y1: int, x2: int, y2: int, color: str = "#64748b", width: int = 2) -> str:
+def _arrow(x1: int, y1: int, x2: int, y2: int, color: str = "#000000", width: float = 1.2) -> str:
     return "".join(
         [
             f"<line x1='{x1}' y1='{y1}' x2='{x2}' y2='{y2}' stroke='{color}' stroke-width='{width}' stroke-linecap='round'/>",
-            f"<polygon points='{x2},{y2} {x2 - 10},{y2 - 5} {x2 - 10},{y2 + 5}' fill='{color}'/>",
+            f"<polygon points='{x2},{y2} {x2 - 7},{y2 - 4} {x2 - 7},{y2 + 4}' fill='{color}'/>",
         ]
     )
 
@@ -221,12 +221,12 @@ def _arch_box(
     title_fill: str = "#0f172a",
 ) -> str:
     pieces = [
-        f"<rect x='{x}' y='{y}' width='{w}' height='{h}' rx='18' fill='{fill}' stroke='{stroke}' stroke-width='1.6'/>",
-        f"<text x='{x + 16}' y='{y + 26}' font-size='16' font-family='Arial, sans-serif' font-weight='700' fill='{title_fill}'>{escape(title)}</text>",
+        f"<rect x='{x}' y='{y}' width='{w}' height='{h}' rx='3' fill='{fill}' stroke='{stroke}' stroke-width='1.0'/>",
+        f"<text x='{x + 10}' y='{y + 19}' font-size='10.5' font-family='Helvetica, Arial, sans-serif' font-weight='700' fill='{title_fill}'>{escape(title)}</text>",
     ]
     for idx, line in enumerate(body_lines):
         pieces.append(
-            f"<text x='{x + 16}' y='{y + 50 + idx * 16}' font-size='11.5' font-family='Arial, sans-serif' fill='#334155'>{escape(line)}</text>"
+            f"<text x='{x + 10}' y='{y + 38 + idx * 12}' font-size='8.7' font-family='Helvetica, Arial, sans-serif' fill='#111827'>{escape(line)}</text>"
         )
     return "".join(pieces)
 
@@ -234,228 +234,209 @@ def _arch_box(
 def _step_box(x: int, y: int, w: int, h: int, step: str, text: str, fill: str, stroke: str) -> str:
     return "".join(
         [
-            f"<rect x='{x}' y='{y}' width='{w}' height='{h}' rx='16' fill='{fill}' stroke='{stroke}' stroke-width='1.4'/>",
-            f"<circle cx='{x + 20}' cy='{y + 20}' r='12' fill='{stroke}'/>",
-            f"<text x='{x + 20}' y='{y + 24}' text-anchor='middle' font-size='11' font-family='Arial, sans-serif' font-weight='700' fill='#ffffff'>{escape(step)}</text>",
-            f"<text x='{x + 42}' y='{y + 24}' font-size='12.5' font-family='Arial, sans-serif' font-weight='700' fill='#0f172a'>{escape(text)}</text>",
+            f"<rect x='{x}' y='{y}' width='{w}' height='{h}' rx='3' fill='{fill}' stroke='{stroke}' stroke-width='1.0'/>",
+            f"<rect x='{x + 8}' y='{y + 8}' width='18' height='18' rx='2' fill='#111827'/>",
+            f"<text x='{x + 17}' y='{y + 21}' text-anchor='middle' font-size='8.5' font-family='Helvetica, Arial, sans-serif' font-weight='700' fill='#ffffff'>{escape(step)}</text>",
+            f"<text x='{x + 34}' y='{y + 21}' font-size='9.2' font-family='Helvetica, Arial, sans-serif' font-weight='700' fill='#111827'>{escape(text)}</text>",
         ]
     )
 
 
 def _architecture_flow_svg() -> str:
-    width = 1240
-    height = 860
+    width = 1120
+    height = 690
     pieces: list[str] = [
         f"<svg xmlns='http://www.w3.org/2000/svg' width='{width}' height='{height}' viewBox='0 0 {width} {height}'>",
         "<rect width='100%' height='100%' fill='#ffffff'/>",
-        "<text x='48' y='34' font-size='26' font-family='Arial, sans-serif' font-weight='700' fill='#0f172a'>End-to-End System Architecture and Tick-Level Control/Data Flow</text>",
-        "<text x='48' y='58' font-size='12' font-family='Arial, sans-serif' fill='#475569'>Architecture reconstructed directly from the implemented simulator, coordination logic, and experiment pipeline.</text>",
-        "<text x='48' y='92' font-size='18' font-family='Arial, sans-serif' font-weight='700' fill='#0f172a'>A. High-Level System Architecture</text>",
     ]
 
     pieces.append(
         _arch_box(
             48,
-            120,
+            46,
             212,
-            128,
+            124,
             "Scenario Config",
             [
-                "JSON scenario files",
-                "grid, robots, tasks, stations",
-                "planner, allocator, events, seed",
+                "JSON scenarios",
+                "grid / robots / tasks / events",
             ],
-            "#f8fafc",
-            "#cbd5e1",
+            "#ffffff",
+            "#000000",
         )
     )
     pieces.append(
         _arch_box(
             304,
-            120,
+            46,
             230,
-            128,
+            124,
             "Loader + Simulator",
             [
                 "load_scenario(...)",
                 "run_simulation(...)",
-                "build GridMap / RobotState / TaskState",
             ],
-            "#f8fafc",
-            "#cbd5e1",
+            "#ffffff",
+            "#000000",
         )
     )
     pieces.append(
         _arch_box(
-            578,
-            108,
-            304,
-            152,
+            550,
+            34,
+            292,
+            148,
             "CoordinatorAgent",
             [
-                "tick loop orchestration",
-                "policy dispatch (baseline / coordinated)",
-                "conflict handling + task progress + stop condition",
+                "tick orchestration",
+                "policy dispatch",
+                "conflict resolution",
             ],
-            "#ecfeff",
-            "#67e8f9",
-            "#155e75",
+            "#ffffff",
+            "#000000",
         )
     )
     pieces.append(
         _arch_box(
-            926,
-            120,
-            266,
-            128,
+            882,
+            46,
+            206,
+            124,
             "Outputs",
             [
-                "RunResult + TickSnapshot timeline",
-                "MetricsReport",
-                "paper CSV / LaTeX / SVG exports",
+                "timeline + metrics",
+                "CSV / LaTeX / SVG",
             ],
-            "#f8fafc",
-            "#cbd5e1",
+            "#ffffff",
+            "#000000",
         )
     )
 
     pieces.append(
         _arch_box(
-            524,
-            300,
-            198,
-            110,
+            486,
+            242,
+            186,
+            104,
             "TaskAllocatorAgent",
             [
-                "greedy or hungarian",
-                "assign idle robots to released tasks",
+                "greedy / Hungarian",
+                "task assignment",
             ],
-            "#fefce8",
-            "#fde68a",
-            "#854d0e",
+            "#ffffff",
+            "#000000",
         )
     )
     pieces.append(
         _arch_box(
-            752,
-            300,
-            220,
-            110,
+            696,
+            242,
+            206,
+            104,
             "TrafficManagerAgent",
             [
                 "prioritized planning",
                 "reservation table",
-                "dynamic priority / micro-replan",
+                "priority / micro-replan",
             ],
-            "#eff6ff",
-            "#bfdbfe",
-            "#1d4ed8",
+            "#ffffff",
+            "#000000",
         )
     )
     pieces.append(
         _arch_box(
-            1002,
-            300,
-            190,
-            110,
+            920,
+            242,
+            116,
+            104,
             "RobotAgent(s)",
             [
-                "consume plan",
-                "emit MOVE / WAIT",
+                "plan -> MOVE / WAIT",
             ],
-            "#f5f3ff",
-            "#ddd6fe",
-            "#6d28d9",
+            "#ffffff",
+            "#000000",
         )
     )
     pieces.append(
         _arch_box(
             274,
-            300,
-            220,
-            110,
+            242,
+            190,
+            104,
             "EventEngine",
             [
                 "temp_block",
                 "stochastic_delay",
-                "active blocked cells / forced waits",
             ],
-            "#fff7ed",
-            "#fed7aa",
-            "#9a3412",
+            "#ffffff",
+            "#000000",
         )
     )
     pieces.append(
         _arch_box(
             48,
-            300,
-            196,
-            110,
+            242,
+            190,
+            104,
             "MetricsCollector",
             [
-                "makespan, throughput, waits",
-                "conflicts, replans, heatmap",
+                "makespan / waits",
+                "conflicts / replans",
             ],
-            "#f8fafc",
-            "#cbd5e1",
+            "#ffffff",
+            "#000000",
         )
     )
 
     pieces.extend(
         [
-            _arrow(260, 184, 304, 184),
-            _arrow(534, 184, 578, 184),
-            _arrow(882, 184, 926, 184),
-            _arrow(678, 260, 678, 300),
-            _arrow(824, 260, 824, 300),
-            _arrow(1097, 260, 1097, 300),
-            _arrow(384, 260, 384, 300),
-            _arrow(146, 300, 146, 248),
-            _arrow(244, 355, 524, 355),
-            _arrow(722, 355, 752, 355),
-            _arrow(972, 355, 1002, 355),
-            _arrow(1100, 410, 1100, 436),
-            _arrow(1100, 436, 650, 436),
-            _arrow(650, 436, 650, 260),
+            _arrow(260, 108, 304, 108),
+            _arrow(534, 108, 550, 108),
+            _arrow(842, 108, 882, 108),
+            _arrow(656, 182, 656, 242),
+            _arrow(798, 182, 798, 242),
+            _arrow(978, 170, 978, 242),
+            _arrow(368, 170, 368, 242),
+            _arrow(143, 242, 143, 170),
+            _arrow(238, 294, 486, 294),
+            _arrow(672, 294, 696, 294),
+            _arrow(902, 294, 920, 294),
         ]
     )
 
     pieces.extend(
         [
-            "<text x='48' y='496' font-size='18' font-family='Arial, sans-serif' font-weight='700' fill='#0f172a'>B. Tick-Level Control and Data Flow</text>",
-            "<rect x='48' y='516' width='1144' height='288' rx='22' fill='#f8fafc' stroke='#e2e8f0'/>",
+            "<line x1='48' y1='384' x2='1072' y2='384' stroke='#000000' stroke-width='0.8' stroke-dasharray='5 5'/>",
         ]
     )
 
     step_specs = [
-        (72, 548, 326, 58, "1", "Update events and task state", "#fff7ed", "#f97316"),
-        (430, 548, 326, 58, "2", "Allocate released tasks", "#fefce8", "#eab308"),
-        (788, 548, 372, 58, "3", "Plan intents (independent or reserved)", "#eff6ff", "#3b82f6"),
-        (72, 632, 326, 58, "4", "Apply delays and blocked-cell overrides", "#fff7ed", "#f97316"),
-        (430, 632, 326, 58, "5", "Detect conflicts and local micro-replan", "#f5f3ff", "#8b5cf6"),
-        (788, 632, 372, 58, "6", "Fallback: lower-priority robots WAIT", "#ecfeff", "#06b6d4"),
-        (256, 716, 326, 58, "7", "Execute MOVE / WAIT and update positions", "#ecfccb", "#65a30d"),
-        (612, 716, 326, 58, "8", "Record snapshot, metrics, and stop if done", "#f8fafc", "#64748b"),
+        (72, 420, 280, 48, "1", "update state", "#ffffff", "#000000"),
+        (394, 420, 280, 48, "2", "allocate tasks", "#ffffff", "#000000"),
+        (716, 420, 280, 48, "3", "plan intents", "#ffffff", "#000000"),
+        (72, 500, 280, 48, "4", "apply events", "#ffffff", "#000000"),
+        (394, 500, 280, 48, "5", "resolve conflicts", "#ffffff", "#000000"),
+        (716, 500, 280, 48, "6", "WAIT fallback", "#ffffff", "#000000"),
+        (232, 580, 280, 48, "7", "execute actions", "#ffffff", "#000000"),
+        (554, 580, 280, 48, "8", "record snapshot", "#ffffff", "#000000"),
     ]
     for spec in step_specs:
         pieces.append(_step_box(*spec))
 
     pieces.extend(
         [
-            _arrow(398, 577, 430, 577),
-            _arrow(756, 577, 788, 577),
-            _arrow(974, 606, 974, 632),
-            _arrow(788, 661, 756, 661),
-            _arrow(430, 661, 398, 661),
-            _arrow(235, 690, 235, 716),
-            _arrow(582, 745, 612, 745),
+            _arrow(352, 444, 394, 444),
+            _arrow(674, 444, 716, 444),
+            _arrow(856, 468, 856, 500),
+            _arrow(716, 524, 674, 524),
+            _arrow(394, 524, 352, 524),
+            _arrow(208, 548, 208, 580),
+            _arrow(512, 604, 554, 604),
         ]
     )
 
     pieces.extend(
         [
-            "<text x='72' y='790' font-size='12' font-family='Arial, sans-serif' fill='#475569'>Core control loop in implementation: sense/update - assign - plan - resolve - act - record.</text>",
-            "<text x='72' y='808' font-size='12' font-family='Arial, sans-serif' fill='#475569'>Full coordinated mode uses reservation-based planning, optional dynamic priority, and localized replanning before deterministic WAIT fallback.</text>",
             "</svg>",
         ]
     )
@@ -477,190 +458,161 @@ def _pipeline_box(
 
 
 def _experiment_pipeline_svg() -> str:
-    width = 1240
-    height = 760
+    width = 1100
+    height = 500
     pieces: list[str] = [
         f"<svg xmlns='http://www.w3.org/2000/svg' width='{width}' height='{height}' viewBox='0 0 {width} {height}'>",
         "<rect width='100%' height='100%' fill='#ffffff'/>",
-        "<text x='48' y='34' font-size='26' font-family='Arial, sans-serif' font-weight='700' fill='#0f172a'>Reproducible Experiment Pipeline from Scenario JSON to Paper Artifacts</text>",
-        "<text x='48' y='58' font-size='12' font-family='Arial, sans-serif' fill='#475569'>Implemented pipeline used to execute benchmark suites, aggregate outputs, and generate paper-ready tables and figures.</text>",
-        "<text x='48' y='96' font-size='18' font-family='Arial, sans-serif' font-weight='700' fill='#0f172a'>A. Inputs and Canonical Experiment Suites</text>",
     ]
 
     pieces.append(
         _pipeline_box(
             48,
-            122,
-            250,
-            140,
+            54,
+            220,
+            126,
             "Scenario JSON Inputs",
             [
-                "core scenarios",
-                "coordination-targeted scenarios",
-                "dynamic and stochastic scenarios",
+                "scenario files",
+                "fixed seeds",
             ],
-            "#f8fafc",
-            "#cbd5e1",
+            "#ffffff",
+            "#000000",
         )
     )
     pieces.append(
         _pipeline_box(
-            340,
-            122,
-            270,
-            140,
+            306,
+            54,
+            220,
+            126,
             "Runner Suite Selection",
             [
                 "main",
-                "allocator / planner / coordination",
-                "robustness / all",
+                "allocator / planner",
+                "coordination / robustness / all",
             ],
-            "#eff6ff",
-            "#bfdbfe",
-            "#1d4ed8",
+            "#ffffff",
+            "#000000",
         )
     )
     pieces.append(
         _pipeline_box(
-            652,
-            122,
-            250,
-            140,
+            564,
+            54,
+            220,
+            126,
             "Simulation Execution",
             [
                 "run_simulation(...)",
-                "baseline / baseline_priority / coordinated",
-                "fixed seed for deterministic replay",
+                "baseline / priority / coordinated",
             ],
-            "#ecfeff",
-            "#67e8f9",
-            "#155e75",
+            "#ffffff",
+            "#000000",
         )
     )
     pieces.append(
         _pipeline_box(
-            944,
-            122,
-            248,
-            140,
+            822,
+            54,
+            220,
+            126,
             "Per-Run Outputs",
             [
                 "RunResult",
-                "timeline snapshots",
-                "MetricsReport",
+                "timeline + metrics",
             ],
-            "#f5f3ff",
-            "#ddd6fe",
-            "#6d28d9",
+            "#ffffff",
+            "#000000",
         )
     )
 
     pieces.extend(
         [
-            _arrow(298, 192, 340, 192),
-            _arrow(610, 192, 652, 192),
-            _arrow(902, 192, 944, 192),
+            _arrow(268, 117, 306, 117),
+            _arrow(526, 117, 564, 117),
+            _arrow(784, 117, 822, 117),
         ]
     )
 
     pieces.extend(
         [
-            "<text x='48' y='330' font-size='18' font-family='Arial, sans-serif' font-weight='700' fill='#0f172a'>B. Aggregation and Paper Artifact Generation</text>",
+            "<line x1='48' y1='238' x2='1052' y2='238' stroke='#000000' stroke-width='0.8' stroke-dasharray='5 5'/>",
         ]
     )
 
     pieces.append(
         _pipeline_box(
             48,
-            356,
-            250,
-            154,
+            284,
+            220,
+            142,
             "Raw Exports",
             [
                 "main_raw.csv / .json",
-                "allocator_raw.csv / .json",
-                "planner_raw.csv / .json",
-                "coordination_raw.csv / .json",
-                "robustness_raw.csv / .json",
+                "suite raw CSV / JSON",
             ],
-            "#fff7ed",
-            "#fed7aa",
-            "#9a3412",
+            "#ffffff",
+            "#000000",
         )
     )
     pieces.append(
         _pipeline_box(
-            340,
-            356,
-            270,
-            154,
+            322,
+            284,
+            220,
+            142,
             "Paper Table Builder",
             [
-                "generate_suite_tables(...)",
-                "CSV summary tables",
-                "LaTeX table exports",
+                "CSV summaries",
+                "LaTeX tables",
             ],
-            "#fefce8",
-            "#fde68a",
-            "#854d0e",
+            "#ffffff",
+            "#000000",
         )
     )
     pieces.append(
         _pipeline_box(
-            652,
-            356,
-            250,
-            154,
+            596,
+            284,
+            220,
+            142,
             "Figure Builder",
             [
-                "generate_paper_figures(...)",
                 "scenario snapshots",
-                "comparison and architecture figures",
+                "comparison diagrams",
             ],
-            "#ecfccb",
-            "#bef264",
-            "#3f6212",
+            "#ffffff",
+            "#000000",
         )
     )
     pieces.append(
         _pipeline_box(
-            944,
-            356,
-            248,
-            154,
+            870,
+            284,
+            230,
+            142,
             "Paper Artifacts",
             [
                 "main_comparison.tex",
-                "allocator / planner / coordination / robustness .tex",
-                "SVG figures for paper and slides",
+                "planner / coordination / robustness .tex",
+                "paper figures",
             ],
-            "#f8fafc",
-            "#cbd5e1",
+            "#ffffff",
+            "#000000",
         )
     )
 
     pieces.extend(
         [
-            _arrow(173, 262, 173, 356),
-            _arrow(298, 434, 340, 434),
-            _arrow(610, 434, 652, 434),
-            _arrow(902, 434, 944, 434),
+            _arrow(158, 180, 158, 284),
+            _arrow(274, 355, 322, 355),
+            _arrow(542, 355, 596, 355),
+            _arrow(816, 355, 870, 355),
         ]
     )
 
-    pieces.extend(
-        [
-            "<text x='48' y='560' font-size='18' font-family='Arial, sans-serif' font-weight='700' fill='#0f172a'>C. Reproducibility Guarantees Encoded in the Repository</text>",
-            "<rect x='48' y='584' width='1144' height='118' rx='20' fill='#f8fafc' stroke='#e2e8f0'/>",
-            "<text x='72' y='618' font-size='13' font-family='Arial, sans-serif' font-weight='700' fill='#0f172a'>Deterministic configuration:</text>",
-            "<text x='250' y='618' font-size='13' font-family='Arial, sans-serif' fill='#334155'>scenario seeds, fixed suite definitions, and canonical planner/allocation settings.</text>",
-            "<text x='72' y='646' font-size='13' font-family='Arial, sans-serif' font-weight='700' fill='#0f172a'>Standardized outputs:</text>",
-            "<text x='250' y='646' font-size='13' font-family='Arial, sans-serif' fill='#334155'>raw CSV/JSON, summarized CSV, LaTeX tables, SVG figures, and figure manifest.</text>",
-            "<text x='72' y='674' font-size='13' font-family='Arial, sans-serif' font-weight='700' fill='#0f172a'>Paper-ready workflow:</text>",
-            "<text x='250' y='674' font-size='13' font-family='Arial, sans-serif' fill='#334155'>the same code path supports CLI experiments, UI paper export, and reproducible artifact regeneration.</text>",
-            "</svg>",
-        ]
-    )
+    pieces.append("</svg>")
     return "".join(pieces)
 
 
