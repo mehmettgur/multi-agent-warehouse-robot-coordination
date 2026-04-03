@@ -1,3 +1,0 @@
-Senaryo,Seedler,Tamamlama,Çakışma,Makespan,Throughput,Bekleme
-dynamic_obstacle,31,4/4 (%100.0),0,11,0.3636,6
-stochastic_delay,"11, 17, 23, 31, 37",8/8,0 ± 0,35 ± 3.63,0.2309 ± 0.0229,64.6 ± 16.69

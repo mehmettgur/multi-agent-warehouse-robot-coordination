@@ -7,6 +7,14 @@ Bu sürüm, proje anlatısını üç katmana ayırır:
 - `Paper Pack`: Makale için kanonik benchmark suite'leri, temiz CSV tabloları ve LaTeX çıktıları
 - `Appendix / Advanced`: Dynamic event ve legacy senaryolar
 
+## Repo Yapısı
+- `src/warehouse_sim/`: çekirdek simülasyon, ajanlar, planner, reservation, metrikler, runner
+- `configs/scenarios/`: benchmark ve demo senaryoları
+- `app/`: Streamlit arayüzü
+- `tests/`: unit ve integration testleri
+- `docs/`: makale ve mimari notları
+- `results/`: çalıştırma sırasında üretilen türetilmiş çıktılar (git tarafından izlenmez)
+
 ## Ana Özellikler
 - Ajan mimarisi:
   - `RobotAgent`
@@ -174,6 +182,8 @@ python -m warehouse_sim.paper_tables \
   --output-dir results/paper/reexport \
   --latex
 ```
+
+Not: `results/` altındaki tüm dosyalar yeniden üretilebilir türetilmiş artifact'lardır; GitHub repo'sunda varsayılan olarak tutulmaz.
 
 ## Makale Notları
 - Mimari diyagram ve RQ bazlı tablo planı: `docs/PAPER_ARCHITECTURE_AND_RQ.md`
